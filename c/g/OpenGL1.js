@@ -7797,8 +7797,6 @@ function dbg(text) {
       GLUT.reshapeFunc = func;
     }
 
-  function _glutSwapBuffers() {}
-
 
 
   function allocateUTF8OnStack(str) {
@@ -7844,8 +7842,7 @@ var wasmImports = {
   "glutInitDisplayMode": _glutInitDisplayMode,
   "glutInitWindowSize": _glutInitWindowSize,
   "glutMainLoop": _glutMainLoop,
-  "glutReshapeFunc": _glutReshapeFunc,
-  "glutSwapBuffers": _glutSwapBuffers
+  "glutReshapeFunc": _glutReshapeFunc
 };
 var asm = createWasm();
 /** @type {function(...*):?} */
