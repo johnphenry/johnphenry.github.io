@@ -6313,7 +6313,6 @@ var ASM_CONSTS = {
   
         // Add some emulation workarounds
         err('WARNING: using emscripten GL emulation. This is a collection of limited workarounds, do not expect it to work.');
-        err('WARNING: using emscripten GL emulation unsafe opts. If weirdness happens, try -sGL_UNSAFE_OPTS=0');
   
         // XXX some of the capabilities we don't support may lead to incorrect rendering, if we do not emulate them in shaders
         var validCapabilities = {
@@ -8487,16 +8486,6 @@ var ASM_CONSTS = {
               arrayBuffer = GLctx.currentArrayBufferBinding;
             }
   
-            // If the array buffer is unchanged and the renderer as well, then we can avoid all the work here
-            // XXX We use some heuristics here, and this may not work in all cases. Try disabling GL_UNSAFE_OPTS if you
-            // have odd glitches
-            var lastRenderer = GLImmediate.lastRenderer;
-            var canSkip = this == lastRenderer &&
-                          arrayBuffer == GLImmediate.lastArrayBuffer &&
-                          (GL.currProgram || this.program) == GLImmediate.lastProgram &&
-                          GLImmediate.stride == GLImmediate.lastStride &&
-                          !GLImmediate.matricesModified;
-            if (!canSkip && lastRenderer) lastRenderer.cleanup();
             if (!GLctx.currentArrayBufferBinding) {
               // Bind the array buffer and upload data after cleaning up the previous renderer
   
@@ -8507,11 +8496,6 @@ var ASM_CONSTS = {
   
               GLctx.bufferSubData(GLctx.ARRAY_BUFFER, start, GLImmediate.vertexData.subarray(start >> 2, end >> 2));
             }
-            if (canSkip) return;
-            GLImmediate.lastRenderer = this;
-            GLImmediate.lastProgram = GL.currProgram || this.program;
-            GLImmediate.lastStride = GLImmediate.stride;
-            GLImmediate.matricesModified = false;
   
             if (!GL.currProgram) {
               if (GLImmediate.fixedFunctionProgram != this.program) {
@@ -8640,8 +8624,6 @@ var ASM_CONSTS = {
               GLImmediate.lastArrayBuffer = null;
             }
   
-            GLImmediate.lastRenderer = null;
-            GLImmediate.lastProgram = null;
             GLImmediate.matricesModified = true;
           }
   
@@ -8943,6 +8925,7 @@ var ASM_CONSTS = {
           GLctx.bindBuffer(GLctx.ELEMENT_ARRAY_BUFFER, GL.buffers[GLctx.currentElementArrayBufferBinding] || null);
         }
   
+        renderer.cleanup();
       }};
   GLImmediate.matrixLib = (function() {
   
