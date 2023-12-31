@@ -1306,6 +1306,262 @@ function dbg(text) {
       abortOnCannotGrowMemory(requestedSize);
     }
 
+  function __webgl_enable_ANGLE_instanced_arrays(ctx) {
+      // Extension available in WebGL 1 from Firefox 26 and Google Chrome 30 onwards. Core feature in WebGL 2.
+      var ext = ctx.getExtension('ANGLE_instanced_arrays');
+      if (ext) {
+        ctx['vertexAttribDivisor'] = function(index, divisor) { ext['vertexAttribDivisorANGLE'](index, divisor); };
+        ctx['drawArraysInstanced'] = function(mode, first, count, primcount) { ext['drawArraysInstancedANGLE'](mode, first, count, primcount); };
+        ctx['drawElementsInstanced'] = function(mode, count, type, indices, primcount) { ext['drawElementsInstancedANGLE'](mode, count, type, indices, primcount); };
+        return 1;
+      }
+    }
+  
+  function __webgl_enable_OES_vertex_array_object(ctx) {
+      // Extension available in WebGL 1 from Firefox 25 and WebKit 536.28/desktop Safari 6.0.3 onwards. Core feature in WebGL 2.
+      var ext = ctx.getExtension('OES_vertex_array_object');
+      if (ext) {
+        ctx['createVertexArray'] = function() { return ext['createVertexArrayOES'](); };
+        ctx['deleteVertexArray'] = function(vao) { ext['deleteVertexArrayOES'](vao); };
+        ctx['bindVertexArray'] = function(vao) { ext['bindVertexArrayOES'](vao); };
+        ctx['isVertexArray'] = function(vao) { return ext['isVertexArrayOES'](vao); };
+        return 1;
+      }
+    }
+  
+  function __webgl_enable_WEBGL_draw_buffers(ctx) {
+      // Extension available in WebGL 1 from Firefox 28 onwards. Core feature in WebGL 2.
+      var ext = ctx.getExtension('WEBGL_draw_buffers');
+      if (ext) {
+        ctx['drawBuffers'] = function(n, bufs) { ext['drawBuffersWEBGL'](n, bufs); };
+        return 1;
+      }
+    }
+  
+  function __webgl_enable_WEBGL_multi_draw(ctx) {
+      // Closure is expected to be allowed to minify the '.multiDrawWebgl' property, so not accessing it quoted.
+      return !!(ctx.multiDrawWebgl = ctx.getExtension('WEBGL_multi_draw'));
+    }
+  
+  var GL = {counter:1,buffers:[],programs:[],framebuffers:[],renderbuffers:[],textures:[],shaders:[],vaos:[],contexts:[],offscreenCanvases:{},queries:[],byteSizeByTypeRoot:5120,byteSizeByType:[1,1,2,2,4,4,4,2,3,4,8],stringCache:{},unpackAlignment:4,recordError:function recordError(errorCode) {
+        if (!GL.lastError) {
+          GL.lastError = errorCode;
+        }
+      },getNewId:function(table) {
+        var ret = GL.counter++;
+        for (var i = table.length; i < ret; i++) {
+          table[i] = null;
+        }
+        return ret;
+      },MAX_TEMP_BUFFER_SIZE:2097152,numTempVertexBuffersPerSize:64,log2ceilLookup:function(i) {
+        return 32 - Math.clz32(i === 0 ? 0 : i - 1);
+      },generateTempBuffers:function(quads, context) {
+        var largestIndex = GL.log2ceilLookup(GL.MAX_TEMP_BUFFER_SIZE);
+        context.tempVertexBufferCounters1 = [];
+        context.tempVertexBufferCounters2 = [];
+        context.tempVertexBufferCounters1.length = context.tempVertexBufferCounters2.length = largestIndex+1;
+        context.tempVertexBuffers1 = [];
+        context.tempVertexBuffers2 = [];
+        context.tempVertexBuffers1.length = context.tempVertexBuffers2.length = largestIndex+1;
+        context.tempIndexBuffers = [];
+        context.tempIndexBuffers.length = largestIndex+1;
+        for (var i = 0; i <= largestIndex; ++i) {
+          context.tempIndexBuffers[i] = null; // Created on-demand
+          context.tempVertexBufferCounters1[i] = context.tempVertexBufferCounters2[i] = 0;
+          var ringbufferLength = GL.numTempVertexBuffersPerSize;
+          context.tempVertexBuffers1[i] = [];
+          context.tempVertexBuffers2[i] = [];
+          var ringbuffer1 = context.tempVertexBuffers1[i];
+          var ringbuffer2 = context.tempVertexBuffers2[i];
+          ringbuffer1.length = ringbuffer2.length = ringbufferLength;
+          for (var j = 0; j < ringbufferLength; ++j) {
+            ringbuffer1[j] = ringbuffer2[j] = null; // Created on-demand
+          }
+        }
+  
+        if (quads) {
+          // GL_QUAD indexes can be precalculated
+          context.tempQuadIndexBuffer = GLctx.createBuffer();
+          context.GLctx.bindBuffer(0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/, context.tempQuadIndexBuffer);
+          var numIndexes = GL.MAX_TEMP_BUFFER_SIZE >> 1;
+          var quadIndexes = new Uint16Array(numIndexes);
+          var i = 0, v = 0;
+          while (1) {
+            quadIndexes[i++] = v;
+            if (i >= numIndexes) break;
+            quadIndexes[i++] = v+1;
+            if (i >= numIndexes) break;
+            quadIndexes[i++] = v+2;
+            if (i >= numIndexes) break;
+            quadIndexes[i++] = v;
+            if (i >= numIndexes) break;
+            quadIndexes[i++] = v+2;
+            if (i >= numIndexes) break;
+            quadIndexes[i++] = v+3;
+            if (i >= numIndexes) break;
+            v += 4;
+          }
+          context.GLctx.bufferData(0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/, quadIndexes, 0x88E4 /*GL_STATIC_DRAW*/);
+          context.GLctx.bindBuffer(0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/, null);
+        }
+      },getTempVertexBuffer:function getTempVertexBuffer(sizeBytes) {
+        var idx = GL.log2ceilLookup(sizeBytes);
+        var ringbuffer = GL.currentContext.tempVertexBuffers1[idx];
+        var nextFreeBufferIndex = GL.currentContext.tempVertexBufferCounters1[idx];
+        GL.currentContext.tempVertexBufferCounters1[idx] = (GL.currentContext.tempVertexBufferCounters1[idx]+1) & (GL.numTempVertexBuffersPerSize-1);
+        var vbo = ringbuffer[nextFreeBufferIndex];
+        if (vbo) {
+          return vbo;
+        }
+        var prevVBO = GLctx.getParameter(0x8894 /*GL_ARRAY_BUFFER_BINDING*/);
+        ringbuffer[nextFreeBufferIndex] = GLctx.createBuffer();
+        GLctx.bindBuffer(0x8892 /*GL_ARRAY_BUFFER*/, ringbuffer[nextFreeBufferIndex]);
+        GLctx.bufferData(0x8892 /*GL_ARRAY_BUFFER*/, 1 << idx, 0x88E8 /*GL_DYNAMIC_DRAW*/);
+        GLctx.bindBuffer(0x8892 /*GL_ARRAY_BUFFER*/, prevVBO);
+        return ringbuffer[nextFreeBufferIndex];
+      },getTempIndexBuffer:function getTempIndexBuffer(sizeBytes) {
+        var idx = GL.log2ceilLookup(sizeBytes);
+        var ibo = GL.currentContext.tempIndexBuffers[idx];
+        if (ibo) {
+          return ibo;
+        }
+        var prevIBO = GLctx.getParameter(0x8895 /*ELEMENT_ARRAY_BUFFER_BINDING*/);
+        GL.currentContext.tempIndexBuffers[idx] = GLctx.createBuffer();
+        GLctx.bindBuffer(0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/, GL.currentContext.tempIndexBuffers[idx]);
+        GLctx.bufferData(0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/, 1 << idx, 0x88E8 /*GL_DYNAMIC_DRAW*/);
+        GLctx.bindBuffer(0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/, prevIBO);
+        return GL.currentContext.tempIndexBuffers[idx];
+      },newRenderingFrameStarted:function newRenderingFrameStarted() {
+        if (!GL.currentContext) {
+          return;
+        }
+        var vb = GL.currentContext.tempVertexBuffers1;
+        GL.currentContext.tempVertexBuffers1 = GL.currentContext.tempVertexBuffers2;
+        GL.currentContext.tempVertexBuffers2 = vb;
+        vb = GL.currentContext.tempVertexBufferCounters1;
+        GL.currentContext.tempVertexBufferCounters1 = GL.currentContext.tempVertexBufferCounters2;
+        GL.currentContext.tempVertexBufferCounters2 = vb;
+        var largestIndex = GL.log2ceilLookup(GL.MAX_TEMP_BUFFER_SIZE);
+        for (var i = 0; i <= largestIndex; ++i) {
+          GL.currentContext.tempVertexBufferCounters1[i] = 0;
+        }
+      },getSource:function(shader, count, string, length) {
+        var source = '';
+        for (var i = 0; i < count; ++i) {
+          var len = length ? HEAP32[(((length)+(i*4))>>2)] : -1;
+          source += UTF8ToString(HEAP32[(((string)+(i*4))>>2)], len < 0 ? undefined : len);
+        }
+        // Let's see if we need to enable the standard derivatives extension
+        var type = GLctx.getShaderParameter(GL.shaders[shader], 0x8B4F /* GL_SHADER_TYPE */);
+        if (type == 0x8B30 /* GL_FRAGMENT_SHADER */) {
+          if (GLEmulation.findToken(source, "dFdx") ||
+              GLEmulation.findToken(source, "dFdy") ||
+              GLEmulation.findToken(source, "fwidth")) {
+            source = "#extension GL_OES_standard_derivatives : enable\n" + source;
+            var extension = GLctx.getExtension("OES_standard_derivatives");
+          }
+        }
+        return source;
+      },createContext:function(/** @type {HTMLCanvasElement} */ canvas, webGLContextAttributes) {
+  
+        // BUG: Workaround Safari WebGL issue: After successfully acquiring WebGL context on a canvas,
+        // calling .getContext() will always return that context independent of which 'webgl' or 'webgl2'
+        // context version was passed. See https://bugs.webkit.org/show_bug.cgi?id=222758 and
+        // https://github.com/emscripten-core/emscripten/issues/13295.
+        // TODO: Once the bug is fixed and shipped in Safari, adjust the Safari version field in above check.
+        if (!canvas.getContextSafariWebGL2Fixed) {
+          canvas.getContextSafariWebGL2Fixed = canvas.getContext;
+          /** @type {function(this:HTMLCanvasElement, string, (Object|null)=): (Object|null)} */
+          function fixedGetContext(ver, attrs) {
+            var gl = canvas.getContextSafariWebGL2Fixed(ver, attrs);
+            return ((ver == 'webgl') == (gl instanceof WebGLRenderingContext)) ? gl : null;
+          }
+          canvas.getContext = fixedGetContext;
+        }
+  
+        var ctx =
+          (canvas.getContext("webgl", webGLContextAttributes)
+            // https://caniuse.com/#feat=webgl
+            );
+  
+        if (!ctx) return 0;
+  
+        var handle = GL.registerContext(ctx, webGLContextAttributes);
+  
+        return handle;
+      },registerContext:function(ctx, webGLContextAttributes) {
+        // without pthreads a context is just an integer ID
+        var handle = GL.getNewId(GL.contexts);
+  
+        var context = {
+          handle: handle,
+          attributes: webGLContextAttributes,
+          version: webGLContextAttributes.majorVersion,
+          GLctx: ctx
+        };
+  
+        // Store the created context object so that we can access the context given a canvas without having to pass the parameters again.
+        if (ctx.canvas) ctx.canvas.GLctxObject = context;
+        GL.contexts[handle] = context;
+        if (typeof webGLContextAttributes.enableExtensionsByDefault == 'undefined' || webGLContextAttributes.enableExtensionsByDefault) {
+          GL.initExtensions(context);
+        }
+  
+        return handle;
+      },makeContextCurrent:function(contextHandle) {
+  
+        GL.currentContext = GL.contexts[contextHandle]; // Active Emscripten GL layer context object.
+        Module.ctx = GLctx = GL.currentContext && GL.currentContext.GLctx; // Active WebGL context object.
+        return !(contextHandle && !GLctx);
+      },getContext:function(contextHandle) {
+        return GL.contexts[contextHandle];
+      },deleteContext:function(contextHandle) {
+        if (GL.currentContext === GL.contexts[contextHandle]) GL.currentContext = null;
+        if (typeof JSEvents == 'object') JSEvents.removeAllHandlersOnTarget(GL.contexts[contextHandle].GLctx.canvas); // Release all JS event handlers on the DOM element that the GL context is associated with since the context is now deleted.
+        if (GL.contexts[contextHandle] && GL.contexts[contextHandle].GLctx.canvas) GL.contexts[contextHandle].GLctx.canvas.GLctxObject = undefined; // Make sure the canvas object no longer refers to the context object so there are no GC surprises.
+        GL.contexts[contextHandle] = null;
+      },initExtensions:function(context) {
+        // If this function is called without a specific context object, init the extensions of the currently active context.
+        if (!context) context = GL.currentContext;
+  
+        if (context.initExtensionsDone) return;
+        context.initExtensionsDone = true;
+  
+        var GLctx = context.GLctx;
+  
+        // Detect the presence of a few extensions manually, this GL interop layer itself will need to know if they exist.
+        context.compressionExt = GLctx.getExtension('WEBGL_compressed_texture_s3tc');
+        context.anisotropicExt = GLctx.getExtension('EXT_texture_filter_anisotropic');
+  
+        // Extensions that are only available in WebGL 1 (the calls will be no-ops if called on a WebGL 2 context active)
+        __webgl_enable_ANGLE_instanced_arrays(GLctx);
+        __webgl_enable_OES_vertex_array_object(GLctx);
+        __webgl_enable_WEBGL_draw_buffers(GLctx);
+  
+        {
+          GLctx.disjointTimerQueryExt = GLctx.getExtension("EXT_disjoint_timer_query");
+        }
+  
+        __webgl_enable_WEBGL_multi_draw(GLctx);
+  
+        // .getSupportedExtensions() can return null if context is lost, so coerce to empty array.
+        var exts = GLctx.getSupportedExtensions() || [];
+        exts.forEach(function(ext) {
+          // WEBGL_lose_context, WEBGL_debug_renderer_info and WEBGL_debug_shaders are not enabled by default.
+          if (!ext.includes('lose_context') && !ext.includes('debug')) {
+            // Call .getExtension() to enable that extension permanently.
+            GLctx.getExtension(ext);
+          }
+        });
+      }};
+  function _glClear(x0) { GLctx['clear'](x0) }
+
+  function _glClearColor(x0, x1, x2, x3) { GLctx['clearColor'](x0, x1, x2, x3) }
+
+  function _glFlush() { GLctx['flush']() }
+
+  function _glViewport(x0, x1, x2, x3) { GLctx['viewport'](x0, x1, x2, x3) }
+
   
   function runtimeKeepalivePush() {
       runtimeKeepaliveCounter += 1;
@@ -2168,1131 +2424,413 @@ function dbg(text) {
         }
       }};
   
-  function __webgl_enable_ANGLE_instanced_arrays(ctx) {
-      // Extension available in WebGL 1 from Firefox 26 and Google Chrome 30 onwards. Core feature in WebGL 2.
-      var ext = ctx.getExtension('ANGLE_instanced_arrays');
-      if (ext) {
-        ctx['vertexAttribDivisor'] = function(index, divisor) { ext['vertexAttribDivisorANGLE'](index, divisor); };
-        ctx['drawArraysInstanced'] = function(mode, first, count, primcount) { ext['drawArraysInstancedANGLE'](mode, first, count, primcount); };
-        ctx['drawElementsInstanced'] = function(mode, count, type, indices, primcount) { ext['drawElementsInstancedANGLE'](mode, count, type, indices, primcount); };
-        return 1;
+  
+  
+  var wasmTableMirror = [];
+  
+  function getWasmTableEntry(funcPtr) {
+      var func = wasmTableMirror[funcPtr];
+      if (!func) {
+        if (funcPtr >= wasmTableMirror.length) wasmTableMirror.length = funcPtr + 1;
+        wasmTableMirror[funcPtr] = func = wasmTable.get(funcPtr);
+      }
+      assert(wasmTable.get(funcPtr) == func, "JavaScript-side Wasm function table mirror is out of date!");
+      return func;
+    }
+  function _glutPostRedisplay() {
+      if (GLUT.displayFunc && !GLUT.requestedAnimationFrame) {
+        GLUT.requestedAnimationFrame = true;
+        Browser.requestAnimationFrame(function() {
+          GLUT.requestedAnimationFrame = false;
+          Browser.mainLoop.runIter(function() {
+            getWasmTableEntry(GLUT.displayFunc)();
+          });
+        });
       }
     }
   
-  function __webgl_enable_OES_vertex_array_object(ctx) {
-      // Extension available in WebGL 1 from Firefox 25 and WebKit 536.28/desktop Safari 6.0.3 onwards. Core feature in WebGL 2.
-      var ext = ctx.getExtension('OES_vertex_array_object');
-      if (ext) {
-        ctx['createVertexArray'] = function() { return ext['createVertexArrayOES'](); };
-        ctx['deleteVertexArray'] = function(vao) { ext['deleteVertexArrayOES'](vao); };
-        ctx['bindVertexArray'] = function(vao) { ext['bindVertexArrayOES'](vao); };
-        ctx['isVertexArray'] = function(vao) { return ext['isVertexArrayOES'](vao); };
-        return 1;
-      }
-    }
   
-  function __webgl_enable_WEBGL_draw_buffers(ctx) {
-      // Extension available in WebGL 1 from Firefox 28 onwards. Core feature in WebGL 2.
-      var ext = ctx.getExtension('WEBGL_draw_buffers');
-      if (ext) {
-        ctx['drawBuffers'] = function(n, bufs) { ext['drawBuffersWEBGL'](n, bufs); };
-        return 1;
-      }
-    }
+  var GLUT = {initTime:null,idleFunc:null,displayFunc:null,keyboardFunc:null,keyboardUpFunc:null,specialFunc:null,specialUpFunc:null,reshapeFunc:null,motionFunc:null,passiveMotionFunc:null,mouseFunc:null,buttons:0,modifiers:0,initWindowWidth:256,initWindowHeight:256,initDisplayMode:18,windowX:0,windowY:0,windowWidth:0,windowHeight:0,requestedAnimationFrame:false,saveModifiers:function(event) {
+        GLUT.modifiers = 0;
+        if (event['shiftKey'])
+          GLUT.modifiers += 1; /* GLUT_ACTIVE_SHIFT */
+        if (event['ctrlKey'])
+          GLUT.modifiers += 2; /* GLUT_ACTIVE_CTRL */
+        if (event['altKey'])
+          GLUT.modifiers += 4; /* GLUT_ACTIVE_ALT */
+      },onMousemove:function(event) {
+        /* Send motion event only if the motion changed, prevents
+         * spamming our app with uncessary callback call. It does happen in
+         * Chrome on Windows.
+         */
+        var lastX = Browser.mouseX;
+        var lastY = Browser.mouseY;
+        Browser.calculateMouseEvent(event);
+        var newX = Browser.mouseX;
+        var newY = Browser.mouseY;
+        if (newX == lastX && newY == lastY) return;
   
-  function __webgl_enable_WEBGL_multi_draw(ctx) {
-      // Closure is expected to be allowed to minify the '.multiDrawWebgl' property, so not accessing it quoted.
-      return !!(ctx.multiDrawWebgl = ctx.getExtension('WEBGL_multi_draw'));
-    }
-  
-  var GL = {counter:1,buffers:[],programs:[],framebuffers:[],renderbuffers:[],textures:[],shaders:[],vaos:[],contexts:[],offscreenCanvases:{},queries:[],byteSizeByTypeRoot:5120,byteSizeByType:[1,1,2,2,4,4,4,2,3,4,8],stringCache:{},unpackAlignment:4,recordError:function recordError(errorCode) {
-        if (!GL.lastError) {
-          GL.lastError = errorCode;
+        if (GLUT.buttons == 0 && event.target == Module["canvas"] && GLUT.passiveMotionFunc) {
+          event.preventDefault();
+          GLUT.saveModifiers(event);
+          getWasmTableEntry(GLUT.passiveMotionFunc)(lastX, lastY);
+        } else if (GLUT.buttons != 0 && GLUT.motionFunc) {
+          event.preventDefault();
+          GLUT.saveModifiers(event);
+          getWasmTableEntry(GLUT.motionFunc)(lastX, lastY);
         }
-      },getNewId:function(table) {
-        var ret = GL.counter++;
-        for (var i = table.length; i < ret; i++) {
-          table[i] = null;
+      },getSpecialKey:function(keycode) {
+          var key = null;
+          switch (keycode) {
+            case 8:  key = 120 /* backspace */; break;
+            case 46: key = 111 /* delete */; break;
+  
+            case 0x70 /*DOM_VK_F1*/: key = 1 /* GLUT_KEY_F1 */; break;
+            case 0x71 /*DOM_VK_F2*/: key = 2 /* GLUT_KEY_F2 */; break;
+            case 0x72 /*DOM_VK_F3*/: key = 3 /* GLUT_KEY_F3 */; break;
+            case 0x73 /*DOM_VK_F4*/: key = 4 /* GLUT_KEY_F4 */; break;
+            case 0x74 /*DOM_VK_F5*/: key = 5 /* GLUT_KEY_F5 */; break;
+            case 0x75 /*DOM_VK_F6*/: key = 6 /* GLUT_KEY_F6 */; break;
+            case 0x76 /*DOM_VK_F7*/: key = 7 /* GLUT_KEY_F7 */; break;
+            case 0x77 /*DOM_VK_F8*/: key = 8 /* GLUT_KEY_F8 */; break;
+            case 0x78 /*DOM_VK_F9*/: key = 9 /* GLUT_KEY_F9 */; break;
+            case 0x79 /*DOM_VK_F10*/: key = 10 /* GLUT_KEY_F10 */; break;
+            case 0x7a /*DOM_VK_F11*/: key = 11 /* GLUT_KEY_F11 */; break;
+            case 0x7b /*DOM_VK_F12*/: key = 12 /* GLUT_KEY_F12 */; break;
+            case 0x25 /*DOM_VK_LEFT*/: key = 100 /* GLUT_KEY_LEFT */; break;
+            case 0x26 /*DOM_VK_UP*/: key = 101 /* GLUT_KEY_UP */; break;
+            case 0x27 /*DOM_VK_RIGHT*/: key = 102 /* GLUT_KEY_RIGHT */; break;
+            case 0x28 /*DOM_VK_DOWN*/: key = 103 /* GLUT_KEY_DOWN */; break;
+            case 0x21 /*DOM_VK_PAGE_UP*/: key = 104 /* GLUT_KEY_PAGE_UP */; break;
+            case 0x22 /*DOM_VK_PAGE_DOWN*/: key = 105 /* GLUT_KEY_PAGE_DOWN */; break;
+            case 0x24 /*DOM_VK_HOME*/: key = 106 /* GLUT_KEY_HOME */; break;
+            case 0x23 /*DOM_VK_END*/: key = 107 /* GLUT_KEY_END */; break;
+            case 0x2d /*DOM_VK_INSERT*/: key = 108 /* GLUT_KEY_INSERT */; break;
+  
+            case 16   /*DOM_VK_SHIFT*/:
+            case 0x05 /*DOM_VK_LEFT_SHIFT*/:
+              key = 112 /* GLUT_KEY_SHIFT_L */;
+              break;
+            case 0x06 /*DOM_VK_RIGHT_SHIFT*/:
+              key = 113 /* GLUT_KEY_SHIFT_R */;
+              break;
+  
+            case 17   /*DOM_VK_CONTROL*/:
+            case 0x03 /*DOM_VK_LEFT_CONTROL*/:
+              key = 114 /* GLUT_KEY_CONTROL_L */;
+              break;
+            case 0x04 /*DOM_VK_RIGHT_CONTROL*/:
+              key = 115 /* GLUT_KEY_CONTROL_R */;
+              break;
+  
+            case 18   /*DOM_VK_ALT*/:
+            case 0x02 /*DOM_VK_LEFT_ALT*/:
+              key = 116 /* GLUT_KEY_ALT_L */;
+              break;
+            case 0x01 /*DOM_VK_RIGHT_ALT*/:
+              key = 117 /* GLUT_KEY_ALT_R */;
+              break;
+          };
+          return key;
+      },getASCIIKey:function(event) {
+        if (event['ctrlKey'] || event['altKey'] || event['metaKey']) return null;
+  
+        var keycode = event['keyCode'];
+  
+        /* The exact list is soooo hard to find in a canonical place! */
+  
+        if (48 <= keycode && keycode <= 57)
+          return keycode; // numeric  TODO handle shift?
+        if (65 <= keycode && keycode <= 90)
+          return event['shiftKey'] ? keycode : keycode + 32;
+        if (96 <= keycode && keycode <= 105)
+          return keycode - 48; // numpad numbers
+        if (106 <= keycode && keycode <= 111)
+          return keycode - 106 + 42; // *,+-./  TODO handle shift?
+  
+        switch (keycode) {
+          case 9:  // tab key
+          case 13: // return key
+          case 27: // escape
+          case 32: // space
+          case 61: // equal
+            return keycode;
         }
-        return ret;
-      },MAX_TEMP_BUFFER_SIZE:2097152,numTempVertexBuffersPerSize:64,log2ceilLookup:function(i) {
-        return 32 - Math.clz32(i === 0 ? 0 : i - 1);
-      },generateTempBuffers:function(quads, context) {
-        var largestIndex = GL.log2ceilLookup(GL.MAX_TEMP_BUFFER_SIZE);
-        context.tempVertexBufferCounters1 = [];
-        context.tempVertexBufferCounters2 = [];
-        context.tempVertexBufferCounters1.length = context.tempVertexBufferCounters2.length = largestIndex+1;
-        context.tempVertexBuffers1 = [];
-        context.tempVertexBuffers2 = [];
-        context.tempVertexBuffers1.length = context.tempVertexBuffers2.length = largestIndex+1;
-        context.tempIndexBuffers = [];
-        context.tempIndexBuffers.length = largestIndex+1;
-        for (var i = 0; i <= largestIndex; ++i) {
-          context.tempIndexBuffers[i] = null; // Created on-demand
-          context.tempVertexBufferCounters1[i] = context.tempVertexBufferCounters2[i] = 0;
-          var ringbufferLength = GL.numTempVertexBuffersPerSize;
-          context.tempVertexBuffers1[i] = [];
-          context.tempVertexBuffers2[i] = [];
-          var ringbuffer1 = context.tempVertexBuffers1[i];
-          var ringbuffer2 = context.tempVertexBuffers2[i];
-          ringbuffer1.length = ringbuffer2.length = ringbufferLength;
-          for (var j = 0; j < ringbufferLength; ++j) {
-            ringbuffer1[j] = ringbuffer2[j] = null; // Created on-demand
+  
+        var s = event['shiftKey'];
+        switch (keycode) {
+          case 186: return s ? 58 : 59; // colon / semi-colon
+          case 187: return s ? 43 : 61; // add / equal (these two may be wrong)
+          case 188: return s ? 60 : 44; // less-than / comma
+          case 189: return s ? 95 : 45; // dash
+          case 190: return s ? 62 : 46; // greater-than / period
+          case 191: return s ? 63 : 47; // forward slash
+          case 219: return s ? 123 : 91; // open bracket
+          case 220: return s ? 124 : 47; // back slash
+          case 221: return s ? 125 : 93; // close braket
+          case 222: return s ? 34 : 39; // single quote
+        }
+  
+        return null;
+      },onKeydown:function(event) {
+        if (GLUT.specialFunc || GLUT.keyboardFunc) {
+          var key = GLUT.getSpecialKey(event['keyCode']);
+          if (key !== null) {
+            if (GLUT.specialFunc) {
+              event.preventDefault();
+              GLUT.saveModifiers(event);
+              getWasmTableEntry(GLUT.specialFunc)(key, Browser.mouseX, Browser.mouseY);
+            }
+          } else {
+            key = GLUT.getASCIIKey(event);
+            if (key !== null && GLUT.keyboardFunc) {
+              event.preventDefault();
+              GLUT.saveModifiers(event);
+              getWasmTableEntry(GLUT.keyboardFunc)(key, Browser.mouseX, Browser.mouseY);
+            }
           }
         }
-  
-        if (quads) {
-          // GL_QUAD indexes can be precalculated
-          context.tempQuadIndexBuffer = GLctx.createBuffer();
-          context.GLctx.bindBuffer(0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/, context.tempQuadIndexBuffer);
-          var numIndexes = GL.MAX_TEMP_BUFFER_SIZE >> 1;
-          var quadIndexes = new Uint16Array(numIndexes);
-          var i = 0, v = 0;
-          while (1) {
-            quadIndexes[i++] = v;
-            if (i >= numIndexes) break;
-            quadIndexes[i++] = v+1;
-            if (i >= numIndexes) break;
-            quadIndexes[i++] = v+2;
-            if (i >= numIndexes) break;
-            quadIndexes[i++] = v;
-            if (i >= numIndexes) break;
-            quadIndexes[i++] = v+2;
-            if (i >= numIndexes) break;
-            quadIndexes[i++] = v+3;
-            if (i >= numIndexes) break;
-            v += 4;
+      },onKeyup:function(event) {
+        if (GLUT.specialUpFunc || GLUT.keyboardUpFunc) {
+          var key = GLUT.getSpecialKey(event['keyCode']);
+          if (key !== null) {
+            if (GLUT.specialUpFunc) {
+              event.preventDefault ();
+              GLUT.saveModifiers(event);
+              getWasmTableEntry(GLUT.specialUpFunc)(key, Browser.mouseX, Browser.mouseY);
+            }
+          } else {
+            key = GLUT.getASCIIKey(event);
+            if (key !== null && GLUT.keyboardUpFunc) {
+              event.preventDefault ();
+              GLUT.saveModifiers(event);
+              getWasmTableEntry(GLUT.keyboardUpFunc)(key, Browser.mouseX, Browser.mouseY);
+            }
           }
-          context.GLctx.bufferData(0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/, quadIndexes, 0x88E4 /*GL_STATIC_DRAW*/);
-          context.GLctx.bindBuffer(0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/, null);
         }
-      },getTempVertexBuffer:function getTempVertexBuffer(sizeBytes) {
-        var idx = GL.log2ceilLookup(sizeBytes);
-        var ringbuffer = GL.currentContext.tempVertexBuffers1[idx];
-        var nextFreeBufferIndex = GL.currentContext.tempVertexBufferCounters1[idx];
-        GL.currentContext.tempVertexBufferCounters1[idx] = (GL.currentContext.tempVertexBufferCounters1[idx]+1) & (GL.numTempVertexBuffersPerSize-1);
-        var vbo = ringbuffer[nextFreeBufferIndex];
-        if (vbo) {
-          return vbo;
-        }
-        var prevVBO = GLctx.getParameter(0x8894 /*GL_ARRAY_BUFFER_BINDING*/);
-        ringbuffer[nextFreeBufferIndex] = GLctx.createBuffer();
-        GLctx.bindBuffer(0x8892 /*GL_ARRAY_BUFFER*/, ringbuffer[nextFreeBufferIndex]);
-        GLctx.bufferData(0x8892 /*GL_ARRAY_BUFFER*/, 1 << idx, 0x88E8 /*GL_DYNAMIC_DRAW*/);
-        GLctx.bindBuffer(0x8892 /*GL_ARRAY_BUFFER*/, prevVBO);
-        return ringbuffer[nextFreeBufferIndex];
-      },getTempIndexBuffer:function getTempIndexBuffer(sizeBytes) {
-        var idx = GL.log2ceilLookup(sizeBytes);
-        var ibo = GL.currentContext.tempIndexBuffers[idx];
-        if (ibo) {
-          return ibo;
-        }
-        var prevIBO = GLctx.getParameter(0x8895 /*ELEMENT_ARRAY_BUFFER_BINDING*/);
-        GL.currentContext.tempIndexBuffers[idx] = GLctx.createBuffer();
-        GLctx.bindBuffer(0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/, GL.currentContext.tempIndexBuffers[idx]);
-        GLctx.bufferData(0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/, 1 << idx, 0x88E8 /*GL_DYNAMIC_DRAW*/);
-        GLctx.bindBuffer(0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/, prevIBO);
-        return GL.currentContext.tempIndexBuffers[idx];
-      },newRenderingFrameStarted:function newRenderingFrameStarted() {
-        if (!GL.currentContext) {
+      },touchHandler:function(event) {
+        if (event.target != Module['canvas']) {
           return;
         }
-        var vb = GL.currentContext.tempVertexBuffers1;
-        GL.currentContext.tempVertexBuffers1 = GL.currentContext.tempVertexBuffers2;
-        GL.currentContext.tempVertexBuffers2 = vb;
-        vb = GL.currentContext.tempVertexBufferCounters1;
-        GL.currentContext.tempVertexBufferCounters1 = GL.currentContext.tempVertexBufferCounters2;
-        GL.currentContext.tempVertexBufferCounters2 = vb;
-        var largestIndex = GL.log2ceilLookup(GL.MAX_TEMP_BUFFER_SIZE);
-        for (var i = 0; i <= largestIndex; ++i) {
-          GL.currentContext.tempVertexBufferCounters1[i] = 0;
-        }
-      },getSource:function(shader, count, string, length) {
-        var source = '';
-        for (var i = 0; i < count; ++i) {
-          var len = length ? HEAP32[(((length)+(i*4))>>2)] : -1;
-          source += UTF8ToString(HEAP32[(((string)+(i*4))>>2)], len < 0 ? undefined : len);
-        }
-        // Let's see if we need to enable the standard derivatives extension
-        var type = GLctx.getShaderParameter(GL.shaders[shader], 0x8B4F /* GL_SHADER_TYPE */);
-        if (type == 0x8B30 /* GL_FRAGMENT_SHADER */) {
-          if (GLEmulation.findToken(source, "dFdx") ||
-              GLEmulation.findToken(source, "dFdy") ||
-              GLEmulation.findToken(source, "fwidth")) {
-            source = "#extension GL_OES_standard_derivatives : enable\n" + source;
-            var extension = GLctx.getExtension("OES_standard_derivatives");
-          }
-        }
-        return source;
-      },createContext:function(/** @type {HTMLCanvasElement} */ canvas, webGLContextAttributes) {
   
-        // BUG: Workaround Safari WebGL issue: After successfully acquiring WebGL context on a canvas,
-        // calling .getContext() will always return that context independent of which 'webgl' or 'webgl2'
-        // context version was passed. See https://bugs.webkit.org/show_bug.cgi?id=222758 and
-        // https://github.com/emscripten-core/emscripten/issues/13295.
-        // TODO: Once the bug is fixed and shipped in Safari, adjust the Safari version field in above check.
-        if (!canvas.getContextSafariWebGL2Fixed) {
-          canvas.getContextSafariWebGL2Fixed = canvas.getContext;
-          /** @type {function(this:HTMLCanvasElement, string, (Object|null)=): (Object|null)} */
-          function fixedGetContext(ver, attrs) {
-            var gl = canvas.getContextSafariWebGL2Fixed(ver, attrs);
-            return ((ver == 'webgl') == (gl instanceof WebGLRenderingContext)) ? gl : null;
-          }
-          canvas.getContext = fixedGetContext;
+        var touches = event.changedTouches,
+            main = touches[0],
+            type = "";
+  
+        switch (event.type) {
+          case "touchstart": type = "mousedown"; break;
+          case "touchmove": type = "mousemove"; break;
+          case "touchend": type = "mouseup"; break;
+          default: return;
         }
   
-        var ctx =
-          (canvas.getContext("webgl", webGLContextAttributes)
-            // https://caniuse.com/#feat=webgl
-            );
+        var simulatedEvent = document.createEvent("MouseEvent");
+        simulatedEvent.initMouseEvent(type, true, true, window, 1,
+                                      main.screenX, main.screenY,
+                                      main.clientX, main.clientY, false,
+                                      false, false, false, 0/*main*/, null);
   
-        if (!ctx) return 0;
+        main.target.dispatchEvent(simulatedEvent);
+        event.preventDefault();
+      },onMouseButtonDown:function(event) {
+        Browser.calculateMouseEvent(event);
   
-        var handle = GL.registerContext(ctx, webGLContextAttributes);
+        GLUT.buttons |= (1 << event['button']);
   
-        return handle;
-      },registerContext:function(ctx, webGLContextAttributes) {
-        // without pthreads a context is just an integer ID
-        var handle = GL.getNewId(GL.contexts);
+        if (event.target == Module["canvas"] && GLUT.mouseFunc) {
+          try {
+            event.target.setCapture();
+          } catch (e) {}
+          event.preventDefault();
+          GLUT.saveModifiers(event);
+          getWasmTableEntry(GLUT.mouseFunc)(event['button'], 0/*GLUT_DOWN*/, Browser.mouseX, Browser.mouseY);
+        }
+      },onMouseButtonUp:function(event) {
+        Browser.calculateMouseEvent(event);
   
-        var context = {
-          handle: handle,
-          attributes: webGLContextAttributes,
-          version: webGLContextAttributes.majorVersion,
-          GLctx: ctx
-        };
+        GLUT.buttons &= ~(1 << event['button']);
   
-        // Store the created context object so that we can access the context given a canvas without having to pass the parameters again.
-        if (ctx.canvas) ctx.canvas.GLctxObject = context;
-        GL.contexts[handle] = context;
-        if (typeof webGLContextAttributes.enableExtensionsByDefault == 'undefined' || webGLContextAttributes.enableExtensionsByDefault) {
-          GL.initExtensions(context);
+        if (GLUT.mouseFunc) {
+          event.preventDefault();
+          GLUT.saveModifiers(event);
+          getWasmTableEntry(GLUT.mouseFunc)(event['button'], 1/*GLUT_UP*/, Browser.mouseX, Browser.mouseY);
+        }
+      },onMouseWheel:function(event) {
+        Browser.calculateMouseEvent(event);
+  
+        // cross-browser wheel delta
+        var e = window.event || event; // old IE support
+        // Note the minus sign that flips browser wheel direction (positive direction scrolls page down) to native wheel direction (positive direction is mouse wheel up)
+        var delta = -Browser.getMouseWheelDelta(event);
+        delta = (delta == 0) ? 0 : (delta > 0 ? Math.max(delta, 1) : Math.min(delta, -1)); // Quantize to integer so that minimum scroll is at least +/- 1.
+  
+        var button = 3; // wheel up
+        if (delta < 0) {
+          button = 4; // wheel down
         }
   
-        return handle;
-      },makeContextCurrent:function(contextHandle) {
-  
-        GL.currentContext = GL.contexts[contextHandle]; // Active Emscripten GL layer context object.
-        Module.ctx = GLctx = GL.currentContext && GL.currentContext.GLctx; // Active WebGL context object.
-        return !(contextHandle && !GLctx);
-      },getContext:function(contextHandle) {
-        return GL.contexts[contextHandle];
-      },deleteContext:function(contextHandle) {
-        if (GL.currentContext === GL.contexts[contextHandle]) GL.currentContext = null;
-        if (typeof JSEvents == 'object') JSEvents.removeAllHandlersOnTarget(GL.contexts[contextHandle].GLctx.canvas); // Release all JS event handlers on the DOM element that the GL context is associated with since the context is now deleted.
-        if (GL.contexts[contextHandle] && GL.contexts[contextHandle].GLctx.canvas) GL.contexts[contextHandle].GLctx.canvas.GLctxObject = undefined; // Make sure the canvas object no longer refers to the context object so there are no GC surprises.
-        GL.contexts[contextHandle] = null;
-      },initExtensions:function(context) {
-        // If this function is called without a specific context object, init the extensions of the currently active context.
-        if (!context) context = GL.currentContext;
-  
-        if (context.initExtensionsDone) return;
-        context.initExtensionsDone = true;
-  
-        var GLctx = context.GLctx;
-  
-        // Detect the presence of a few extensions manually, this GL interop layer itself will need to know if they exist.
-        context.compressionExt = GLctx.getExtension('WEBGL_compressed_texture_s3tc');
-        context.anisotropicExt = GLctx.getExtension('EXT_texture_filter_anisotropic');
-  
-        // Extensions that are only available in WebGL 1 (the calls will be no-ops if called on a WebGL 2 context active)
-        __webgl_enable_ANGLE_instanced_arrays(GLctx);
-        __webgl_enable_OES_vertex_array_object(GLctx);
-        __webgl_enable_WEBGL_draw_buffers(GLctx);
-  
-        {
-          GLctx.disjointTimerQueryExt = GLctx.getExtension("EXT_disjoint_timer_query");
+        if (GLUT.mouseFunc) {
+          event.preventDefault();
+          GLUT.saveModifiers(event);
+          getWasmTableEntry(GLUT.mouseFunc)(button, 0/*GLUT_DOWN*/, Browser.mouseX, Browser.mouseY);
         }
-  
-        __webgl_enable_WEBGL_multi_draw(GLctx);
-  
-        // .getSupportedExtensions() can return null if context is lost, so coerce to empty array.
-        var exts = GLctx.getSupportedExtensions() || [];
-        exts.forEach(function(ext) {
-          // WEBGL_lose_context, WEBGL_debug_renderer_info and WEBGL_debug_shaders are not enabled by default.
-          if (!ext.includes('lose_context') && !ext.includes('debug')) {
-            // Call .getExtension() to enable that extension permanently.
-            GLctx.getExtension(ext);
-          }
-        });
+      },onFullscreenEventChange:function(event) {
+        var width;
+        var height;
+        if (document["fullscreen"] || document["fullScreen"] || document["mozFullScreen"] || document["webkitIsFullScreen"]) {
+          width = screen["width"];
+          height = screen["height"];
+        } else {
+          width = GLUT.windowWidth;
+          height = GLUT.windowHeight;
+          // TODO set position
+          document.removeEventListener('fullscreenchange', GLUT.onFullscreenEventChange, true);
+          document.removeEventListener('mozfullscreenchange', GLUT.onFullscreenEventChange, true);
+          document.removeEventListener('webkitfullscreenchange', GLUT.onFullscreenEventChange, true);
+        }
+        Browser.setCanvasSize(width, height, true); // N.B. GLUT.reshapeFunc is also registered as a canvas resize callback.
+                                                    // Just call it once here.
+        /* Can't call _glutReshapeWindow as that requests cancelling fullscreen. */
+        if (GLUT.reshapeFunc) {
+          // out("GLUT.reshapeFunc (from FS): " + width + ", " + height);
+          getWasmTableEntry(GLUT.reshapeFunc)(width, height);
+        }
+        _glutPostRedisplay();
       }};
-  
-  
-  function _glEnable(x0) { GLctx['enable'](x0) }
-  
-  function _glDisable(x0) { GLctx['disable'](x0) }
-  
-  function _glIsEnabled(x0) { return GLctx['isEnabled'](x0) }
-  
-  function readI53FromI64(ptr) {
-      return HEAPU32[ptr>>2] + HEAP32[ptr+4>>2] * 4294967296;
+  function _glutCreateWindow(name) {
+      var contextAttributes = {
+        antialias: ((GLUT.initDisplayMode & 0x0080 /*GLUT_MULTISAMPLE*/) != 0),
+        depth: ((GLUT.initDisplayMode & 0x0010 /*GLUT_DEPTH*/) != 0),
+        stencil: ((GLUT.initDisplayMode & 0x0020 /*GLUT_STENCIL*/) != 0),
+        alpha: ((GLUT.initDisplayMode & 0x0008 /*GLUT_ALPHA*/) != 0)
+      };
+      Module.ctx = Browser.createContext(Module['canvas'], true, true, contextAttributes);
+      return Module.ctx ? 1 /* a new GLUT window ID for the created context */ : 0 /* failure */;
     }
-  
-  function readI53FromU64(ptr) {
-      return HEAPU32[ptr>>2] + HEAPU32[ptr+4>>2] * 4294967296;
+
+  function _glutDisplayFunc(func) {
+      GLUT.displayFunc = func;
     }
-  function writeI53ToI64(ptr, num) {
-      HEAPU32[ptr>>2] = num;
-      HEAPU32[ptr+4>>2] = (num - HEAPU32[ptr>>2])/4294967296;
-      var deserialized = (num >= 0) ? readI53FromU64(ptr) : readI53FromI64(ptr);
-      if (deserialized != num) warnOnce('writeI53ToI64() out of range: serialized JS Number ' + num + ' to Wasm heap as bytes lo=' + ptrToString(HEAPU32[ptr>>2]) + ', hi=' + ptrToString(HEAPU32[ptr+4>>2]) + ', which deserializes back to ' + deserialized + ' instead!');
-    }
+
   
-  function emscriptenWebGLGet(name_, p, type) {
-      // Guard against user passing a null pointer.
-      // Note that GLES2 spec does not say anything about how passing a null pointer should be treated.
-      // Testing on desktop core GL 3, the application crashes on glGetIntegerv to a null pointer, but
-      // better to report an error instead of doing anything random.
-      if (!p) {
-        GL.recordError(0x501 /* GL_INVALID_VALUE */);
-        return;
-      }
-      var ret = undefined;
-      switch (name_) { // Handle a few trivial GLES values
-        case 0x8DFA: // GL_SHADER_COMPILER
-          ret = 1;
-          break;
-        case 0x8DF8: // GL_SHADER_BINARY_FORMATS
-          if (type != 0 && type != 1) {
-            GL.recordError(0x500); // GL_INVALID_ENUM
-          }
-          return; // Do not write anything to the out pointer, since no binary formats are supported.
-        case 0x8DF9: // GL_NUM_SHADER_BINARY_FORMATS
-          ret = 0;
-          break;
-        case 0x86A2: // GL_NUM_COMPRESSED_TEXTURE_FORMATS
-          // WebGL doesn't have GL_NUM_COMPRESSED_TEXTURE_FORMATS (it's obsolete since GL_COMPRESSED_TEXTURE_FORMATS returns a JS array that can be queried for length),
-          // so implement it ourselves to allow C++ GLES2 code get the length.
-          var formats = GLctx.getParameter(0x86A3 /*GL_COMPRESSED_TEXTURE_FORMATS*/);
-          ret = formats ? formats.length : 0;
-          break;
   
-      }
-  
-      if (ret === undefined) {
-        var result = GLctx.getParameter(name_);
-        switch (typeof result) {
-          case "number":
-            ret = result;
-            break;
-          case "boolean":
-            ret = result ? 1 : 0;
-            break;
-          case "string":
-            GL.recordError(0x500); // GL_INVALID_ENUM
-            return;
-          case "object":
-            if (result === null) {
-              // null is a valid result for some (e.g., which buffer is bound - perhaps nothing is bound), but otherwise
-              // can mean an invalid name_, which we need to report as an error
-              switch (name_) {
-                case 0x8894: // ARRAY_BUFFER_BINDING
-                case 0x8B8D: // CURRENT_PROGRAM
-                case 0x8895: // ELEMENT_ARRAY_BUFFER_BINDING
-                case 0x8CA6: // FRAMEBUFFER_BINDING or DRAW_FRAMEBUFFER_BINDING
-                case 0x8CA7: // RENDERBUFFER_BINDING
-                case 0x8069: // TEXTURE_BINDING_2D
-                case 0x85B5: // WebGL 2 GL_VERTEX_ARRAY_BINDING, or WebGL 1 extension OES_vertex_array_object GL_VERTEX_ARRAY_BINDING_OES
-                case 0x8514: { // TEXTURE_BINDING_CUBE_MAP
-                  ret = 0;
-                  break;
-                }
-                default: {
-                  GL.recordError(0x500); // GL_INVALID_ENUM
-                  return;
-                }
-              }
-            } else if (result instanceof Float32Array ||
-                       result instanceof Uint32Array ||
-                       result instanceof Int32Array ||
-                       result instanceof Array) {
-              for (var i = 0; i < result.length; ++i) {
-                switch (type) {
-                  case 0: HEAP32[(((p)+(i*4))>>2)] = result[i]; break;
-                  case 2: HEAPF32[(((p)+(i*4))>>2)] = result[i]; break;
-                  case 4: HEAP8[(((p)+(i))>>0)] = result[i] ? 1 : 0; break;
-                }
-              }
-              return;
-            } else {
-              try {
-                ret = result.name | 0;
-              } catch(e) {
-                GL.recordError(0x500); // GL_INVALID_ENUM
-                err('GL_INVALID_ENUM in glGet' + type + 'v: Unknown object returned from WebGL getParameter(' + name_ + ')! (error: ' + e + ')');
-                return;
-              }
-            }
-            break;
-          default:
-            GL.recordError(0x500); // GL_INVALID_ENUM
-            err('GL_INVALID_ENUM in glGet' + type + 'v: Native code calling glGet' + type + 'v(' + name_ + ') and it returns ' + result + ' of type ' + typeof(result) + '!');
-            return;
+  function _glutIdleFunc(func) {
+      function callback() {
+        if (GLUT.idleFunc) {
+          getWasmTableEntry(GLUT.idleFunc)();
+          safeSetTimeout(callback, 4); // HTML spec specifies a 4ms minimum delay on the main thread; workers might get more, but we standardize here
         }
       }
-  
-      switch (type) {
-        case 1: writeI53ToI64(p, ret); break;
-        case 0: HEAP32[((p)>>2)] = ret; break;
-        case 2:   HEAPF32[((p)>>2)] = ret; break;
-        case 4: HEAP8[((p)>>0)] = ret ? 1 : 0; break;
+      if (!GLUT.idleFunc) {
+        safeSetTimeout(callback, 0);
       }
+      GLUT.idleFunc = func;
     }
-  
-  function _glGetBooleanv(name_, p) {
-      emscriptenWebGLGet(name_, p, 4);
-    }
+
   
   
-  function _glGetIntegerv(name_, p) {
-      emscriptenWebGLGet(name_, p, 0);
-    }
+  function _glutInit(argcp, argv) {
+      // Ignore arguments
+      GLUT.initTime = Date.now();
   
-  function stringToNewUTF8(jsString) {
-      var length = lengthBytesUTF8(jsString)+1;
-      var cString = _malloc(length);
-      stringToUTF8(jsString, cString, length);
-      return cString;
-    }
+      var isTouchDevice = 'ontouchstart' in document.documentElement;
+      if (isTouchDevice) {
+        // onMouseButtonDown, onMouseButtonUp and onMousemove handlers
+        // depend on Browser.mouseX / Browser.mouseY fields. Those fields
+        // don't get updated by touch events. So register a touchHandler
+        // function that translates the touch events to mouse events.
   
-  function _glGetString(name_) {
-      var ret = GL.stringCache[name_];
-      if (!ret) {
-        switch (name_) {
-          case 0x1F03 /* GL_EXTENSIONS */:
-            var exts = GLctx.getSupportedExtensions() || []; // .getSupportedExtensions() can return null if context is lost, so coerce to empty array.
-            exts = exts.concat(exts.map(function(e) { return "GL_" + e; }));
-            ret = stringToNewUTF8(exts.join(' '));
-            break;
-          case 0x1F00 /* GL_VENDOR */:
-          case 0x1F01 /* GL_RENDERER */:
-          case 0x9245 /* UNMASKED_VENDOR_WEBGL */:
-          case 0x9246 /* UNMASKED_RENDERER_WEBGL */:
-            var s = GLctx.getParameter(name_);
-            if (!s) {
-              GL.recordError(0x500/*GL_INVALID_ENUM*/);
-            }
-            ret = s && stringToNewUTF8(s);
-            break;
+        // GLUT doesn't support touch, mouse only, so from touch events we
+        // are only looking at single finger touches to emulate left click,
+        // so we can use workaround and convert all touch events in mouse
+        // events. See touchHandler.
+        window.addEventListener("touchmove", GLUT.touchHandler, true);
+        window.addEventListener("touchstart", GLUT.touchHandler, true);
+        window.addEventListener("touchend", GLUT.touchHandler, true);
+      }
   
-          case 0x1F02 /* GL_VERSION */:
-            var glVersion = GLctx.getParameter(0x1F02 /*GL_VERSION*/);
-            // return GLES version string corresponding to the version of the WebGL context
-            {
-              glVersion = 'OpenGL ES 2.0 (' + glVersion + ')';
-            }
-            ret = stringToNewUTF8(glVersion);
-            break;
-          case 0x8B8C /* GL_SHADING_LANGUAGE_VERSION */:
-            var glslVersion = GLctx.getParameter(0x8B8C /*GL_SHADING_LANGUAGE_VERSION*/);
-            // extract the version number 'N.M' from the string 'WebGL GLSL ES N.M ...'
-            var ver_re = /^WebGL GLSL ES ([0-9]\.[0-9][0-9]?)(?:$| .*)/;
-            var ver_num = glslVersion.match(ver_re);
-            if (ver_num !== null) {
-              if (ver_num[1].length == 3) ver_num[1] = ver_num[1] + '0'; // ensure minor version has 2 digits
-              glslVersion = 'OpenGL ES GLSL ES ' + ver_num[1] + ' (' + glslVersion + ')';
-            }
-            ret = stringToNewUTF8(glslVersion);
-            break;
-          default:
-            GL.recordError(0x500/*GL_INVALID_ENUM*/);
-            // fall through
+      window.addEventListener("keydown", GLUT.onKeydown, true);
+      window.addEventListener("keyup", GLUT.onKeyup, true);
+      window.addEventListener("mousemove", GLUT.onMousemove, true);
+      window.addEventListener("mousedown", GLUT.onMouseButtonDown, true);
+      window.addEventListener("mouseup", GLUT.onMouseButtonUp, true);
+      // IE9, Chrome, Safari, Opera
+      window.addEventListener("mousewheel", GLUT.onMouseWheel, true);
+      // Firefox
+      window.addEventListener("DOMMouseScroll", GLUT.onMouseWheel, true);
+  
+      Browser.resizeListeners.push(function(width, height) {
+        if (GLUT.reshapeFunc) {
+          getWasmTableEntry(GLUT.reshapeFunc)(width, height);
         }
-        GL.stringCache[name_] = ret;
+      });
+  
+      __ATEXIT__.push(function() {
+        if (isTouchDevice) {
+          window.removeEventListener("touchmove", GLUT.touchHandler, true);
+          window.removeEventListener("touchstart", GLUT.touchHandler, true);
+          window.removeEventListener("touchend", GLUT.touchHandler, true);
+        }
+  
+        window.removeEventListener("keydown", GLUT.onKeydown, true);
+        window.removeEventListener("keyup", GLUT.onKeyup, true);
+        window.removeEventListener("mousemove", GLUT.onMousemove, true);
+        window.removeEventListener("mousedown", GLUT.onMouseButtonDown, true);
+        window.removeEventListener("mouseup", GLUT.onMouseButtonUp, true);
+        // IE9, Chrome, Safari, Opera
+        window.removeEventListener("mousewheel", GLUT.onMouseWheel, true);
+        // Firefox
+        window.removeEventListener("DOMMouseScroll", GLUT.onMouseWheel, true);
+  
+        Module["canvas"].width = Module["canvas"].height = 1;
+      });
+    }
+
+  function _glutInitDisplayMode(mode) {
+      GLUT.initDisplayMode = mode;
+    }
+
+  function _glutInitWindowSize(width, height) {
+      Browser.setCanvasSize( GLUT.initWindowWidth = width,
+                             GLUT.initWindowHeight = height );
+    }
+
+  
+  
+  
+  
+  function _glutReshapeWindow(width, height) {
+      Browser.exitFullscreen();
+      Browser.setCanvasSize(width, height, true); // N.B. GLUT.reshapeFunc is also registered as a canvas resize callback.
+                                                  // Just call it once here.
+      if (GLUT.reshapeFunc) {
+        getWasmTableEntry(GLUT.reshapeFunc)(width, height);
       }
+      _glutPostRedisplay();
+    }
+  
+  
+  function _glutMainLoop() {
+      _glutReshapeWindow(Module['canvas'].width, Module['canvas'].height);
+      _glutPostRedisplay();
+      throw 'unwind';
+    }
+
+  function _glutReshapeFunc(func) {
+      GLUT.reshapeFunc = func;
+    }
+
+
+
+  function allocateUTF8OnStack(str) {
+      var size = lengthBytesUTF8(str) + 1;
+      var ret = stackAlloc(size);
+      stringToUTF8Array(str, HEAP8, ret, size);
       return ret;
     }
-  
-  function _glCreateShader(shaderType) {
-      var id = GL.getNewId(GL.shaders);
-      GL.shaders[id] = GLctx.createShader(shaderType);
-  
-      return id;
-    }
-  
-  function _glShaderSource(shader, count, string, length) {
-      var source = GL.getSource(shader, count, string, length);
-  
-      GLctx.shaderSource(GL.shaders[shader], source);
-    }
-  
-  function _glCompileShader(shader) {
-      GLctx.compileShader(GL.shaders[shader]);
-    }
-  
-  function _glAttachShader(program, shader) {
-      GLctx.attachShader(GL.programs[program], GL.shaders[shader]);
-    }
-  
-  function _glDetachShader(program, shader) {
-      GLctx.detachShader(GL.programs[program], GL.shaders[shader]);
-    }
-  
-  function _glUseProgram(program) {
-      program = GL.programs[program];
-      GLctx.useProgram(program);
-      // Record the currently active program so that we can access the uniform
-      // mapping table of that program.
-      GLctx.currentProgram = program;
-    }
-  
-  function _glDeleteProgram(id) {
-      if (!id) return;
-      var program = GL.programs[id];
-      if (!program) { // glDeleteProgram actually signals an error when deleting a nonexisting object, unlike some other GL delete functions.
-        GL.recordError(0x501 /* GL_INVALID_VALUE */);
-        return;
-      }
-      GLctx.deleteProgram(program);
-      program.name = 0;
-      GL.programs[id] = null;
-    }
-  
-  function _glBindAttribLocation(program, index, name) {
-      GLctx.bindAttribLocation(GL.programs[program], index, UTF8ToString(name));
-    }
-  
-  function _glLinkProgram(program) {
-      program = GL.programs[program];
-      GLctx.linkProgram(program);
-      // Invalidate earlier computed uniform->ID mappings, those have now become stale
-      program.uniformLocsById = 0; // Mark as null-like so that glGetUniformLocation() knows to populate this again.
-      program.uniformSizeAndIdsByName = {};
-  
-    }
-  
-  function _glBindBuffer(target, buffer) {
-      if (target == 0x8892 /*GL_ARRAY_BUFFER*/) {
-        GLctx.currentArrayBufferBinding = buffer;
-        GLImmediate.lastArrayBuffer = buffer;
-      } else if (target == 0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/) {
-        GLctx.currentElementArrayBufferBinding = buffer;
-      }
-  
-      GLctx.bindBuffer(target, GL.buffers[buffer]);
-    }
+
   
   
-  function _glGetFloatv(name_, p) {
-      emscriptenWebGLGet(name_, p, 2);
-    }
-  
-  function _glHint(x0, x1) { GLctx['hint'](x0, x1) }
-  
-  function _glEnableVertexAttribArray(index) {
-      GLctx.enableVertexAttribArray(index);
-    }
-  
-  function _glDisableVertexAttribArray(index) {
-      GLctx.disableVertexAttribArray(index);
-    }
-  
-  function _glVertexAttribPointer(index, size, type, normalized, stride, ptr) {
-      GLctx.vertexAttribPointer(index, size, type, !!normalized, stride, ptr);
-    }
-  
-  function _glActiveTexture(x0) { GLctx['activeTexture'](x0) }
-  
-  
-  var GLEmulation = {fogStart:0,fogEnd:1,fogDensity:1,fogColor:null,fogMode:2048,fogEnabled:false,MAX_CLIP_PLANES:6,clipPlaneEnabled:[false,false,false,false,false,false],clipPlaneEquation:[],lightingEnabled:false,lightModelAmbient:null,lightModelLocalViewer:false,lightModelTwoSide:false,materialAmbient:null,materialDiffuse:null,materialSpecular:null,materialShininess:null,materialEmission:null,MAX_LIGHTS:8,lightEnabled:[false,false,false,false,false,false,false,false],lightAmbient:[],lightDiffuse:[],lightSpecular:[],lightPosition:[],alphaTestEnabled:false,alphaTestFunc:519,alphaTestRef:0,pointSize:1,vaos:[],currentVao:null,enabledVertexAttribArrays:{},hasRunInit:false,findToken:function(source, token) {
-        function isIdentChar(ch) {
-          if (ch >= 48 && ch <= 57) // 0-9
-            return true;
-          if (ch >= 65 && ch <= 90) // A-Z
-            return true;
-          if (ch >= 97 && ch <= 122) // a-z
-            return true;
-          return false;
-        }
-        var i = -1;
-        do {
-          i = source.indexOf(token, i + 1);
-          if (i < 0) {
-            break;
-          }
-          if (i > 0 && isIdentChar(source[i - 1])) {
-            continue;
-          }
-          i += token.length;
-          if (i < source.length - 1 && isIdentChar(source[i + 1])) {
-            continue;
-          }
-          return true;
-        } while (true);
-        return false;
-      },init:function() {
-        // Do not activate immediate/emulation code (e.g. replace glDrawElements) when in FULL_ES2 mode.
-        // We do not need full emulation, we instead emulate client-side arrays etc. in FULL_ES2 code in
-        // a straightforward manner, and avoid not having a bound buffer be ambiguous between es2 emulation
-        // code and legacy gl emulation code.
-  
-        if (GLEmulation.hasRunInit) {
-          return;
-        }
-        GLEmulation.hasRunInit = true;
-  
-        GLEmulation.fogColor = new Float32Array(4);
-  
-        for (var clipPlaneId = 0; clipPlaneId < GLEmulation.MAX_CLIP_PLANES; clipPlaneId++) {
-          GLEmulation.clipPlaneEquation[clipPlaneId] = new Float32Array(4);
-        }
-  
-        // set defaults for GL_LIGHTING
-        GLEmulation.lightModelAmbient = new Float32Array([0.2, 0.2, 0.2, 1.0]);
-        GLEmulation.materialAmbient = new Float32Array([0.2, 0.2, 0.2, 1.0]);
-        GLEmulation.materialDiffuse = new Float32Array([0.8, 0.8, 0.8, 1.0]);
-        GLEmulation.materialSpecular = new Float32Array([0.0, 0.0, 0.0, 1.0]);
-        GLEmulation.materialShininess = new Float32Array([0.0]);
-        GLEmulation.materialEmission = new Float32Array([0.0, 0.0, 0.0, 1.0]);
-  
-        for (var lightId = 0; lightId < GLEmulation.MAX_LIGHTS; lightId++) {
-          GLEmulation.lightAmbient[lightId] = new Float32Array([0.0, 0.0, 0.0, 1.0]);
-          GLEmulation.lightDiffuse[lightId] = lightId ? new Float32Array([0.0, 0.0, 0.0, 1.0]) : new Float32Array([1.0, 1.0, 1.0, 1.0]);
-          GLEmulation.lightSpecular[lightId] = lightId ? new Float32Array([0.0, 0.0, 0.0, 1.0]) : new Float32Array([1.0, 1.0, 1.0, 1.0]);
-          GLEmulation.lightPosition[lightId] = new Float32Array([0.0, 0.0, 1.0, 0.0]);
-        }
-  
-        // Add some emulation workarounds
-        err('WARNING: using emscripten GL emulation. This is a collection of limited workarounds, do not expect it to work.');
-  
-        // XXX some of the capabilities we don't support may lead to incorrect rendering, if we do not emulate them in shaders
-        var validCapabilities = {
-          0xB44: 1, // GL_CULL_FACE
-          0xBE2: 1, // GL_BLEND
-          0xBD0: 1, // GL_DITHER,
-          0xB90: 1, // GL_STENCIL_TEST
-          0xB71: 1, // GL_DEPTH_TEST
-          0xC11: 1, // GL_SCISSOR_TEST
-          0x8037: 1, // GL_POLYGON_OFFSET_FILL
-          0x809E: 1, // GL_SAMPLE_ALPHA_TO_COVERAGE
-          0x80A0: 1  // GL_SAMPLE_COVERAGE
-        };
-  
-  
-  
-        var glEnable = _glEnable;
-        _glEnable = _emscripten_glEnable = (cap) => {
-          // Clean up the renderer on any change to the rendering state. The optimization of
-          // skipping renderer setup is aimed at the case of multiple glDraw* right after each other
-          if (GLImmediate.lastRenderer) GLImmediate.lastRenderer.cleanup();
-          if (cap == 0xB60 /* GL_FOG */) {
-            if (GLEmulation.fogEnabled != true) {
-              GLImmediate.currentRenderer = null; // Fog parameter is part of the FFP shader state, we must re-lookup the renderer to use.
-              GLEmulation.fogEnabled = true;
-            }
-            return;
-          } else if ((cap >= 0x3000) && (cap < 0x3006)  /* GL_CLIP_PLANE0 to GL_CLIP_PLANE5 */) {
-            var clipPlaneId = cap - 0x3000;
-            if (GLEmulation.clipPlaneEnabled[clipPlaneId] != true) {
-              GLImmediate.currentRenderer = null; // clip plane parameter is part of the FFP shader state, we must re-lookup the renderer to use.
-              GLEmulation.clipPlaneEnabled[clipPlaneId] = true;
-            }
-            return;
-          } else if ((cap >= 0x4000) && (cap < 0x4008)  /* GL_LIGHT0 to GL_LIGHT7 */) {
-            var lightId = cap - 0x4000;
-            if (GLEmulation.lightEnabled[lightId] != true) {
-              GLImmediate.currentRenderer = null; // light parameter is part of the FFP shader state, we must re-lookup the renderer to use.
-              GLEmulation.lightEnabled[lightId] = true;
-            }
-            return;
-          } else if (cap == 0xB50 /* GL_LIGHTING */) {
-            if (GLEmulation.lightingEnabled != true) {
-              GLImmediate.currentRenderer = null; // light parameter is part of the FFP shader state, we must re-lookup the renderer to use.
-              GLEmulation.lightingEnabled = true;
-            }
-            return;
-          } else if (cap == 0xBC0 /* GL_ALPHA_TEST */) {
-            if (GLEmulation.alphaTestEnabled != true) {
-              GLImmediate.currentRenderer = null; // alpha testing is part of the FFP shader state, we must re-lookup the renderer to use.
-              GLEmulation.alphaTestEnabled = true;
-            }
-            return;
-          } else if (cap == 0xDE1 /* GL_TEXTURE_2D */) {
-            // XXX not according to spec, and not in desktop GL, but works in some GLES1.x apparently, so support
-            // it by forwarding to glEnableClientState
-            /* Actually, let's not, for now. (This sounds exceedingly broken)
-             * This is in gl_ps_workaround2.c.
-            _glEnableClientState(cap);
-            */
-            return;
-          } else if (!(cap in validCapabilities)) {
-            return;
-          }
-          glEnable(cap);
-        };
-        
-  
-        var glDisable = _glDisable;
-        _glDisable = _emscripten_glDisable = (cap) => {
-          if (GLImmediate.lastRenderer) GLImmediate.lastRenderer.cleanup();
-          if (cap == 0xB60 /* GL_FOG */) {
-            if (GLEmulation.fogEnabled != false) {
-              GLImmediate.currentRenderer = null; // Fog parameter is part of the FFP shader state, we must re-lookup the renderer to use.
-              GLEmulation.fogEnabled = false;
-            }
-            return;
-          } else if ((cap >= 0x3000) && (cap < 0x3006)  /* GL_CLIP_PLANE0 to GL_CLIP_PLANE5 */) {
-            var clipPlaneId = cap - 0x3000;
-            if (GLEmulation.clipPlaneEnabled[clipPlaneId] != false) {
-              GLImmediate.currentRenderer = null; // clip plane parameter is part of the FFP shader state, we must re-lookup the renderer to use.
-              GLEmulation.clipPlaneEnabled[clipPlaneId] = false;
-            }
-            return;
-          } else if ((cap >= 0x4000) && (cap < 0x4008)  /* GL_LIGHT0 to GL_LIGHT7 */) {
-            var lightId = cap - 0x4000;
-            if (GLEmulation.lightEnabled[lightId] != false) {
-              GLImmediate.currentRenderer = null; // light parameter is part of the FFP shader state, we must re-lookup the renderer to use.
-              GLEmulation.lightEnabled[lightId] = false;
-            }
-            return;
-          } else if (cap == 0xB50 /* GL_LIGHTING */) {
-            if (GLEmulation.lightingEnabled != false) {
-              GLImmediate.currentRenderer = null; // light parameter is part of the FFP shader state, we must re-lookup the renderer to use.
-              GLEmulation.lightingEnabled = false;
-            }
-            return;
-          } else if (cap == 0xBC0 /* GL_ALPHA_TEST */) {
-            if (GLEmulation.alphaTestEnabled != false) {
-              GLImmediate.currentRenderer = null; // alpha testing is part of the FFP shader state, we must re-lookup the renderer to use.
-              GLEmulation.alphaTestEnabled = false;
-            }
-            return;
-          } else if (cap == 0xDE1 /* GL_TEXTURE_2D */) {
-            // XXX not according to spec, and not in desktop GL, but works in some GLES1.x apparently, so support
-            // it by forwarding to glDisableClientState
-            /* Actually, let's not, for now. (This sounds exceedingly broken)
-             * This is in gl_ps_workaround2.c.
-            _glDisableClientState(cap);
-            */
-            return;
-          } else if (!(cap in validCapabilities)) {
-            return;
-          }
-          glDisable(cap);
-        };
-        
-  
-        _glIsEnabled = _emscripten_glIsEnabled = (cap) => {
-          if (cap == 0xB60 /* GL_FOG */) {
-            return GLEmulation.fogEnabled ? 1 : 0;
-          } else if ((cap >= 0x3000) && (cap < 0x3006)  /* GL_CLIP_PLANE0 to GL_CLIP_PLANE5 */) {
-            var clipPlaneId = cap - 0x3000;
-            return GLEmulation.clipPlaneEnabled[clipPlaneId] ? 1 : 0;
-          } else if ((cap >= 0x4000) && (cap < 0x4008)  /* GL_LIGHT0 to GL_LIGHT7 */) {
-            var lightId = cap - 0x4000;
-            return GLEmulation.lightEnabled[lightId] ? 1 : 0;
-          } else if (cap == 0xB50 /* GL_LIGHTING */) {
-            return GLEmulation.lightingEnabled ? 1 : 0;
-          } else if (cap == 0xBC0 /* GL_ALPHA_TEST */) {
-            return GLEmulation.alphaTestEnabled ? 1 : 0;
-          } else if (!(cap in validCapabilities)) {
-            return 0;
-          }
-          return GLctx.isEnabled(cap);
-        };
-        
-  
-        var glGetBooleanv = _glGetBooleanv;
-        _glGetBooleanv = _emscripten_glGetBooleanv = (pname, p) => {
-          var attrib = GLEmulation.getAttributeFromCapability(pname);
-          if (attrib !== null) {
-            var result = GLImmediate.enabledClientAttributes[attrib];
-            HEAP8[((p)>>0)] = result === true ? 1 : 0;
-            return;
-          }
-          glGetBooleanv(pname, p);
-        };
-        
-  
-        var glGetIntegerv = _glGetIntegerv;
-        _glGetIntegerv = _emscripten_glGetIntegerv = (pname, params) => {
-          switch (pname) {
-            case 0x84E2: pname = GLctx.MAX_TEXTURE_IMAGE_UNITS /* fake it */; break; // GL_MAX_TEXTURE_UNITS
-            case 0x8B4A: { // GL_MAX_VERTEX_UNIFORM_COMPONENTS_ARB
-              var result = GLctx.getParameter(GLctx.MAX_VERTEX_UNIFORM_VECTORS);
-              HEAP32[((params)>>2)] = result*4; // GLES gives num of 4-element vectors, GL wants individual components, so multiply
-              return;
-            }
-            case 0x8B49: { // GL_MAX_FRAGMENT_UNIFORM_COMPONENTS_ARB
-              var result = GLctx.getParameter(GLctx.MAX_FRAGMENT_UNIFORM_VECTORS);
-              HEAP32[((params)>>2)] = result*4; // GLES gives num of 4-element vectors, GL wants individual components, so multiply
-              return;
-            }
-            case 0x8B4B: { // GL_MAX_VARYING_FLOATS_ARB
-              var result = GLctx.getParameter(GLctx.MAX_VARYING_VECTORS);
-              HEAP32[((params)>>2)] = result*4; // GLES gives num of 4-element vectors, GL wants individual components, so multiply
-              return;
-            }
-            case 0x8871: pname = GLctx.MAX_COMBINED_TEXTURE_IMAGE_UNITS /* close enough */; break; // GL_MAX_TEXTURE_COORDS
-            case 0x807A: { // GL_VERTEX_ARRAY_SIZE
-              var attribute = GLImmediate.clientAttributes[GLImmediate.VERTEX];
-              HEAP32[((params)>>2)] = attribute ? attribute.size : 0;
-              return;
-            }
-            case 0x807B: { // GL_VERTEX_ARRAY_TYPE
-              var attribute = GLImmediate.clientAttributes[GLImmediate.VERTEX];
-              HEAP32[((params)>>2)] = attribute ? attribute.type : 0;
-              return;
-            }
-            case 0x807C: { // GL_VERTEX_ARRAY_STRIDE
-              var attribute = GLImmediate.clientAttributes[GLImmediate.VERTEX];
-              HEAP32[((params)>>2)] = attribute ? attribute.stride : 0;
-              return;
-            }
-            case 0x8081: { // GL_COLOR_ARRAY_SIZE
-              var attribute = GLImmediate.clientAttributes[GLImmediate.COLOR];
-              HEAP32[((params)>>2)] = attribute ? attribute.size : 0;
-              return;
-            }
-            case 0x8082: { // GL_COLOR_ARRAY_TYPE
-              var attribute = GLImmediate.clientAttributes[GLImmediate.COLOR];
-              HEAP32[((params)>>2)] = attribute ? attribute.type : 0;
-              return;
-            }
-            case 0x8083: { // GL_COLOR_ARRAY_STRIDE
-              var attribute = GLImmediate.clientAttributes[GLImmediate.COLOR];
-              HEAP32[((params)>>2)] = attribute ? attribute.stride : 0;
-              return;
-            }
-            case 0x8088: { // GL_TEXTURE_COORD_ARRAY_SIZE
-              var attribute = GLImmediate.clientAttributes[GLImmediate.TEXTURE0 + GLImmediate.clientActiveTexture];
-              HEAP32[((params)>>2)] = attribute ? attribute.size : 0;
-              return;
-            }
-            case 0x8089: { // GL_TEXTURE_COORD_ARRAY_TYPE
-              var attribute = GLImmediate.clientAttributes[GLImmediate.TEXTURE0 + GLImmediate.clientActiveTexture];
-              HEAP32[((params)>>2)] = attribute ? attribute.type : 0;
-              return;
-            }
-            case 0x808A: { // GL_TEXTURE_COORD_ARRAY_STRIDE
-              var attribute = GLImmediate.clientAttributes[GLImmediate.TEXTURE0 + GLImmediate.clientActiveTexture];
-              HEAP32[((params)>>2)] = attribute ? attribute.stride : 0;
-              return;
-            }
-            case 0x0D32: { // GL_MAX_CLIP_PLANES
-              HEAP32[((params)>>2)] = GLEmulation.MAX_CLIP_PLANES; // all implementations need to support atleast 6
-              return;
-            }
-            case 0x0BA0: { // GL_MATRIX_MODE
-              HEAP32[((params)>>2)] = GLImmediate.currentMatrix + 0x1700;
-              return;
-            }
-            case 0x0BC1: { // GL_ALPHA_TEST_FUNC
-              HEAP32[((params)>>2)] = GLEmulation.alphaTestFunc;
-              return;
-            }
-          }
-          glGetIntegerv(pname, params);
-        };
-        
-  
-        var glGetString = _glGetString;
-        _glGetString = _emscripten_glGetString = (name_) => {
-          if (GL.stringCache[name_]) return GL.stringCache[name_];
-          switch (name_) {
-            case 0x1F03 /* GL_EXTENSIONS */: // Add various extensions that we can support
-              var ret = stringToNewUTF8((GLctx.getSupportedExtensions() || []).join(' ') +
-                     ' GL_EXT_texture_env_combine GL_ARB_texture_env_crossbar GL_ATI_texture_env_combine3 GL_NV_texture_env_combine4 GL_EXT_texture_env_dot3 GL_ARB_multitexture GL_ARB_vertex_buffer_object GL_EXT_framebuffer_object GL_ARB_vertex_program GL_ARB_fragment_program GL_ARB_shading_language_100 GL_ARB_shader_objects GL_ARB_vertex_shader GL_ARB_fragment_shader GL_ARB_texture_cube_map GL_EXT_draw_range_elements' +
-                     (GL.currentContext.compressionExt ? ' GL_ARB_texture_compression GL_EXT_texture_compression_s3tc' : '') +
-                     (GL.currentContext.anisotropicExt ? ' GL_EXT_texture_filter_anisotropic' : '')
-              );
-              GL.stringCache[name_] = ret;
-              return ret;
-          }
-          return glGetString(name_);
-        };
-        
-  
-        // Do some automatic rewriting to work around GLSL differences. Note that this must be done in
-        // tandem with the rest of the program, by itself it cannot suffice.
-        // Note that we need to remember shader types for this rewriting, saving sources makes it easier to debug.
-        GL.shaderInfos = {};
-        var glCreateShader = _glCreateShader;
-        _glCreateShader = _emscripten_glCreateShader = (shaderType) => {
-          var id = glCreateShader(shaderType);
-          GL.shaderInfos[id] = {
-            type: shaderType,
-            ftransform: false
-          };
-          return id;
-        };
-        
-  
-        function ensurePrecision(source) {
-          if (!/precision +(low|medium|high)p +float *;/.test(source)) {
-            source = '#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n' + source;
-          }
-          return source;
-        }
-  
-        var glShaderSource = _glShaderSource;
-        _glShaderSource = _emscripten_glShaderSource = (shader, count, string, length) => {
-          var source = GL.getSource(shader, count, string, length);
-          // XXX We add attributes and uniforms to shaders. The program can ask for the # of them, and see the
-          // ones we generated, potentially confusing it? Perhaps we should hide them.
-          if (GL.shaderInfos[shader].type == GLctx.VERTEX_SHADER) {
-            // Replace ftransform() with explicit project/modelview transforms, and add position and matrix info.
-            var has_pm = source.search(/u_projection/) >= 0;
-            var has_mm = source.search(/u_modelView/) >= 0;
-            var has_pv = source.search(/a_position/) >= 0;
-            var need_pm = 0, need_mm = 0, need_pv = 0;
-            var old = source;
-            source = source.replace(/ftransform\(\)/g, '(u_projection * u_modelView * a_position)');
-            if (old != source) need_pm = need_mm = need_pv = 1;
-            old = source;
-            source = source.replace(/gl_ProjectionMatrix/g, 'u_projection');
-            if (old != source) need_pm = 1;
-            old = source;
-            source = source.replace(/gl_ModelViewMatrixTranspose\[2\]/g, 'vec4(u_modelView[0][2], u_modelView[1][2], u_modelView[2][2], u_modelView[3][2])'); // XXX extremely inefficient
-            if (old != source) need_mm = 1;
-            old = source;
-            source = source.replace(/gl_ModelViewMatrix/g, 'u_modelView');
-            if (old != source) need_mm = 1;
-            old = source;
-            source = source.replace(/gl_Vertex/g, 'a_position');
-            if (old != source) need_pv = 1;
-            old = source;
-            source = source.replace(/gl_ModelViewProjectionMatrix/g, '(u_projection * u_modelView)');
-            if (old != source) need_pm = need_mm = 1;
-            if (need_pv && !has_pv) source = 'attribute vec4 a_position; \n' + source;
-            if (need_mm && !has_mm) source = 'uniform mat4 u_modelView; \n' + source;
-            if (need_pm && !has_pm) source = 'uniform mat4 u_projection; \n' + source;
-            GL.shaderInfos[shader].ftransform = need_pm || need_mm || need_pv; // we will need to provide the fixed function stuff as attributes and uniforms
-            for (var i = 0; i < GLImmediate.MAX_TEXTURES; i++) {
-              // XXX To handle both regular texture mapping and cube mapping, we use vec4 for tex coordinates.
-              old = source;
-              var need_vtc = source.search('v_texCoord' + i) == -1;
-              source = source.replace(new RegExp('gl_TexCoord\\[' + i + '\\]', 'g'), 'v_texCoord' + i)
-                             .replace(new RegExp('gl_MultiTexCoord' + i, 'g'), 'a_texCoord' + i);
-              if (source != old) {
-                source = 'attribute vec4 a_texCoord' + i + '; \n' + source;
-                if (need_vtc) {
-                  source = 'varying vec4 v_texCoord' + i + ';   \n' + source;
-                }
-              }
-  
-              old = source;
-              source = source.replace(new RegExp('gl_TextureMatrix\\[' + i + '\\]', 'g'), 'u_textureMatrix' + i);
-              if (source != old) {
-                source = 'uniform mat4 u_textureMatrix' + i + '; \n' + source;
-              }
-            }
-            if (source.includes('gl_FrontColor')) {
-              source = 'varying vec4 v_color; \n' +
-                       source.replace(/gl_FrontColor/g, 'v_color');
-            }
-            if (source.includes('gl_Color')) {
-              source = 'attribute vec4 a_color; \n' +
-                       source.replace(/gl_Color/g, 'a_color');
-            }
-            if (source.includes('gl_Normal')) {
-              source = 'attribute vec3 a_normal; \n' +
-                       source.replace(/gl_Normal/g, 'a_normal');
-            }
-            // fog
-            if (source.includes('gl_FogFragCoord')) {
-              source = 'varying float v_fogFragCoord;   \n' +
-                       source.replace(/gl_FogFragCoord/g, 'v_fogFragCoord');
-            }
-          } else { // Fragment shader
-            for (i = 0; i < GLImmediate.MAX_TEXTURES; i++) {
-              old = source;
-              source = source.replace(new RegExp('gl_TexCoord\\[' + i + '\\]', 'g'), 'v_texCoord' + i);
-              if (source != old) {
-                source = 'varying vec4 v_texCoord' + i + ';   \n' + source;
-              }
-            }
-            if (source.includes('gl_Color')) {
-              source = 'varying vec4 v_color; \n' + source.replace(/gl_Color/g, 'v_color');
-            }
-            if (source.includes('gl_Fog.color')) {
-              source = 'uniform vec4 u_fogColor;   \n' +
-                       source.replace(/gl_Fog.color/g, 'u_fogColor');
-            }
-            if (source.includes('gl_Fog.end')) {
-              source = 'uniform float u_fogEnd;   \n' +
-                       source.replace(/gl_Fog.end/g, 'u_fogEnd');
-            }
-            if (source.includes('gl_Fog.scale')) {
-              source = 'uniform float u_fogScale;   \n' +
-                       source.replace(/gl_Fog.scale/g, 'u_fogScale');
-            }
-            if (source.includes('gl_Fog.density')) {
-              source = 'uniform float u_fogDensity;   \n' +
-                       source.replace(/gl_Fog.density/g, 'u_fogDensity');
-            }
-            if (source.includes('gl_FogFragCoord')) {
-              source = 'varying float v_fogFragCoord;   \n' +
-                       source.replace(/gl_FogFragCoord/g, 'v_fogFragCoord');
-            }
-            source = ensurePrecision(source);
-          }
-          GLctx.shaderSource(GL.shaders[shader], source);
-        };
-        
-  
-        var glCompileShader = _glCompileShader;
-        _glCompileShader = _emscripten_glCompileShader = (shader) => {
-          GLctx.compileShader(GL.shaders[shader]);
-        };
-        
-  
-        GL.programShaders = {};
-        var glAttachShader = _glAttachShader;
-        _glAttachShader = _emscripten_glAttachShader = (program, shader) => {
-          if (!GL.programShaders[program]) GL.programShaders[program] = [];
-          GL.programShaders[program].push(shader);
-          glAttachShader(program, shader);
-        };
-        
-  
-        var glDetachShader = _glDetachShader;
-        _glDetachShader = _emscripten_glDetachShader = (program, shader) => {
-          var programShader = GL.programShaders[program];
-          if (!programShader) {
-            err('WARNING: _glDetachShader received invalid program: ' + program);
-            return;
-          }
-          var index = programShader.indexOf(shader);
-          programShader.splice(index, 1);
-          glDetachShader(program, shader);
-        };
-        
-  
-        var glUseProgram = _glUseProgram;
-        _glUseProgram = _emscripten_glUseProgram = (program) => {
-          if (GL.currProgram != program) {
-            GLImmediate.currentRenderer = null; // This changes the FFP emulation shader program, need to recompute that.
-            GL.currProgram = program;
-            GLImmediate.fixedFunctionProgram = 0;
-            glUseProgram(program);
-          }
-        }
-        
-  
-        var glDeleteProgram = _glDeleteProgram;
-        _glDeleteProgram = _emscripten_glDeleteProgram = (program) => {
-          glDeleteProgram(program);
-          if (program == GL.currProgram) {
-            GLImmediate.currentRenderer = null; // This changes the FFP emulation shader program, need to recompute that.
-            GL.currProgram = 0;
-          }
-        };
-        
-  
-        // If attribute 0 was not bound, bind it to 0 for WebGL performance reasons. Track if 0 is free for that.
-        var zeroUsedPrograms = {};
-        var glBindAttribLocation = _glBindAttribLocation;
-        _glBindAttribLocation = _emscripten_glBindAttribLocation = (program, index, name) => {
-          if (index == 0) zeroUsedPrograms[program] = true;
-          glBindAttribLocation(program, index, name);
-        };
-        
-  
-        var glLinkProgram = _glLinkProgram;
-        _glLinkProgram = _emscripten_glLinkProgram = (program) => {
-          if (!(program in zeroUsedPrograms)) {
-            GLctx.bindAttribLocation(GL.programs[program], 0, 'a_position');
-          }
-          glLinkProgram(program);
-        };
-        
-  
-        var glBindBuffer = _glBindBuffer;
-        _glBindBuffer = _emscripten_glBindBuffer = (target, buffer) => {
-          glBindBuffer(target, buffer);
-          if (target == GLctx.ARRAY_BUFFER) {
-            if (GLEmulation.currentVao) {
-              assert(GLEmulation.currentVao.arrayBuffer == buffer || GLEmulation.currentVao.arrayBuffer == 0 || buffer == 0, 'TODO: support for multiple array buffers in vao');
-              GLEmulation.currentVao.arrayBuffer = buffer;
-            }
-          } else if (target == GLctx.ELEMENT_ARRAY_BUFFER) {
-            if (GLEmulation.currentVao) GLEmulation.currentVao.elementArrayBuffer = buffer;
-          }
-        };
-        
-  
-        var glGetFloatv = _glGetFloatv;
-        _glGetFloatv = _emscripten_glGetFloatv = (pname, params) => {
-          if (pname == 0xBA6) { // GL_MODELVIEW_MATRIX
-            HEAPF32.set(GLImmediate.matrix[0/*m*/], params >> 2);
-          } else if (pname == 0xBA7) { // GL_PROJECTION_MATRIX
-            HEAPF32.set(GLImmediate.matrix[1/*p*/], params >> 2);
-          } else if (pname == 0xBA8) { // GL_TEXTURE_MATRIX
-            HEAPF32.set(GLImmediate.matrix[2/*t*/ + GLImmediate.clientActiveTexture], params >> 2);
-          } else if (pname == 0xB66) { // GL_FOG_COLOR
-            HEAPF32.set(GLEmulation.fogColor, params >> 2);
-          } else if (pname == 0xB63) { // GL_FOG_START
-            HEAPF32[((params)>>2)] = GLEmulation.fogStart;
-          } else if (pname == 0xB64) { // GL_FOG_END
-            HEAPF32[((params)>>2)] = GLEmulation.fogEnd;
-          } else if (pname == 0xB62) { // GL_FOG_DENSITY
-            HEAPF32[((params)>>2)] = GLEmulation.fogDensity;
-          } else if (pname == 0xB65) { // GL_FOG_MODE
-            HEAPF32[((params)>>2)] = GLEmulation.fogMode;
-          } else if (pname == 0xB53) { // GL_LIGHT_MODEL_AMBIENT
-            HEAPF32[((params)>>2)] = GLEmulation.lightModelAmbient[0];
-            HEAPF32[(((params)+(4))>>2)] = GLEmulation.lightModelAmbient[1];
-            HEAPF32[(((params)+(8))>>2)] = GLEmulation.lightModelAmbient[2];
-            HEAPF32[(((params)+(12))>>2)] = GLEmulation.lightModelAmbient[3];
-          } else if (pname == 0xBC2) { // GL_ALPHA_TEST_REF
-            HEAPF32[((params)>>2)] = GLEmulation.alphaTestRef;
-          } else {
-            glGetFloatv(pname, params);
-          }
-        };
-        
-  
-        var glHint = _glHint;
-        _glHint = _emscripten_glHint = (target, mode) => {
-          if (target == 0x84EF) { // GL_TEXTURE_COMPRESSION_HINT
-            return;
-          }
-          glHint(target, mode);
-        };
-        
-  
-        var glEnableVertexAttribArray = _glEnableVertexAttribArray;
-        _glEnableVertexAttribArray = _emscripten_glEnableVertexAttribArray = (index) => {
-          glEnableVertexAttribArray(index);
-          GLEmulation.enabledVertexAttribArrays[index] = 1;
-          if (GLEmulation.currentVao) GLEmulation.currentVao.enabledVertexAttribArrays[index] = 1;
-        };
-        
-  
-        var glDisableVertexAttribArray = _glDisableVertexAttribArray;
-        _glDisableVertexAttribArray = _emscripten_glDisableVertexAttribArray = (index) => {
-          glDisableVertexAttribArray(index);
-          delete GLEmulation.enabledVertexAttribArrays[index];
-          if (GLEmulation.currentVao) delete GLEmulation.currentVao.enabledVertexAttribArrays[index];
-        };
-        
-  
-        var glVertexAttribPointer = _glVertexAttribPointer;
-        _glVertexAttribPointer = _emscripten_glVertexAttribPointer = (index, size, type, normalized, stride, pointer) => {
-          glVertexAttribPointer(index, size, type, normalized, stride, pointer);
-          if (GLEmulation.currentVao) { // TODO: avoid object creation here? likely not hot though
-            GLEmulation.currentVao.vertexAttribPointers[index] = [index, size, type, normalized, stride, pointer];
-          }
-        };
-        
-      },getAttributeFromCapability:function(cap) {
-        var attrib = null;
-        switch (cap) {
-          case 0xDE1: // GL_TEXTURE_2D - XXX not according to spec, and not in desktop GL, but works in some GLES1.x apparently, so support it
-            abort("GL_TEXTURE_2D is not a spec-defined capability for gl{Enable,Disable}ClientState.");
-            // Fall through:
-          case 0x8078: // GL_TEXTURE_COORD_ARRAY
-            attrib = GLImmediate.TEXTURE0 + GLImmediate.clientActiveTexture; break;
-          case 0x8074: // GL_VERTEX_ARRAY
-            attrib = GLImmediate.VERTEX; break;
-          case 0x8075: // GL_NORMAL_ARRAY
-            attrib = GLImmediate.NORMAL; break;
-          case 0x8076: // GL_COLOR_ARRAY
-            attrib = GLImmediate.COLOR; break;
-        }
-        return attrib;
-      }};
   var GLImmediate = {MapTreeLib:null,spawnMapTreeLib:function() {
         /**
          * A naive implementation of a map backed by an array, and accessed by
@@ -7313,500 +6851,883 @@ function dbg(text) {
   ;
   
   var GLImmediateSetup = {};
-  function _glBegin(mode) {
-      // Push the old state:
-      GLImmediate.enabledClientAttributes_preBegin = GLImmediate.enabledClientAttributes;
-      GLImmediate.enabledClientAttributes = [];
   
-      GLImmediate.clientAttributes_preBegin = GLImmediate.clientAttributes;
-      GLImmediate.clientAttributes = []
-      for (var i = 0; i < GLImmediate.clientAttributes_preBegin.length; i++) {
-        GLImmediate.clientAttributes.push({});
+  function _glEnable(x0) { GLctx['enable'](x0) }
+  
+  function _glDisable(x0) { GLctx['disable'](x0) }
+  
+  function _glIsEnabled(x0) { return GLctx['isEnabled'](x0) }
+  
+  function readI53FromI64(ptr) {
+      return HEAPU32[ptr>>2] + HEAP32[ptr+4>>2] * 4294967296;
+    }
+  
+  function readI53FromU64(ptr) {
+      return HEAPU32[ptr>>2] + HEAPU32[ptr+4>>2] * 4294967296;
+    }
+  function writeI53ToI64(ptr, num) {
+      HEAPU32[ptr>>2] = num;
+      HEAPU32[ptr+4>>2] = (num - HEAPU32[ptr>>2])/4294967296;
+      var deserialized = (num >= 0) ? readI53FromU64(ptr) : readI53FromI64(ptr);
+      if (deserialized != num) warnOnce('writeI53ToI64() out of range: serialized JS Number ' + num + ' to Wasm heap as bytes lo=' + ptrToString(HEAPU32[ptr>>2]) + ', hi=' + ptrToString(HEAPU32[ptr+4>>2]) + ', which deserializes back to ' + deserialized + ' instead!');
+    }
+  
+  function emscriptenWebGLGet(name_, p, type) {
+      // Guard against user passing a null pointer.
+      // Note that GLES2 spec does not say anything about how passing a null pointer should be treated.
+      // Testing on desktop core GL 3, the application crashes on glGetIntegerv to a null pointer, but
+      // better to report an error instead of doing anything random.
+      if (!p) {
+        GL.recordError(0x501 /* GL_INVALID_VALUE */);
+        return;
       }
-  
-      GLImmediate.mode = mode;
-      GLImmediate.vertexCounter = 0;
-      var components = GLImmediate.rendererComponents = [];
-      for (var i = 0; i < GLImmediate.NUM_ATTRIBUTES; i++) {
-        components[i] = 0;
-      }
-      GLImmediate.rendererComponentPointer = 0;
-      GLImmediate.vertexData = GLImmediate.tempData;
-    }
-
-  function _glClear(x0) { GLctx['clear'](x0) }
-
-  function _glClearColor(x0, x1, x2, x3) { GLctx['clearColor'](x0, x1, x2, x3) }
-
-  function _emscripten_glColor4f(r, g, b, a) {
-      r = Math.max(Math.min(r, 1), 0);
-      g = Math.max(Math.min(g, 1), 0);
-      b = Math.max(Math.min(b, 1), 0);
-      a = Math.max(Math.min(a, 1), 0);
-  
-      // TODO: make ub the default, not f, save a few mathops
-      if (GLImmediate.mode >= 0) {
-        var start = GLImmediate.vertexCounter << 2;
-        GLImmediate.vertexDataU8[start + 0] = r * 255;
-        GLImmediate.vertexDataU8[start + 1] = g * 255;
-        GLImmediate.vertexDataU8[start + 2] = b * 255;
-        GLImmediate.vertexDataU8[start + 3] = a * 255;
-        GLImmediate.vertexCounter++;
-        GLImmediate.addRendererComponent(GLImmediate.COLOR, 4, GLctx.UNSIGNED_BYTE);
-      } else {
-        GLImmediate.clientColor[0] = r;
-        GLImmediate.clientColor[1] = g;
-        GLImmediate.clientColor[2] = b;
-        GLImmediate.clientColor[3] = a;
-      }
-    }
-  function _glColor3f(r, g, b) {
-      _emscripten_glColor4f(r, g, b, 1);
-    }
-
-  function _glEnd() {
-      GLImmediate.prepareClientAttributes(GLImmediate.rendererComponents[GLImmediate.VERTEX], true);
-      GLImmediate.firstVertex = 0;
-      GLImmediate.lastVertex = GLImmediate.vertexCounter / (GLImmediate.stride >> 2);
-      GLImmediate.flush();
-      GLImmediate.disableBeginEndClientAttributes();
-      GLImmediate.mode = -1;
-  
-      // Pop the old state:
-      GLImmediate.enabledClientAttributes = GLImmediate.enabledClientAttributes_preBegin;
-      GLImmediate.clientAttributes = GLImmediate.clientAttributes_preBegin;
-      GLImmediate.currentRenderer = null; // The set of active client attributes changed, we must re-lookup the renderer to use.
-      GLImmediate.modifiedClientAttributes = true;
-    }
-
-  function _glFlush() { GLctx['flush']() }
-
-  function _glOrtho(left, right, bottom, top_, nearVal, farVal) {
-      GLImmediate.matricesModified = true;
-      GLImmediate.matrixVersion[GLImmediate.currentMatrix] = (GLImmediate.matrixVersion[GLImmediate.currentMatrix] + 1)|0;
-      GLImmediate.matrixLib.mat4.multiply(GLImmediate.matrix[GLImmediate.currentMatrix],
-          GLImmediate.matrixLib.mat4.ortho(left, right, bottom, top_, nearVal, farVal));
-    }
-
-  function _glVertex2f(x, y) {
-      assert(GLImmediate.mode >= 0); // must be in begin/end
-      GLImmediate.vertexData[GLImmediate.vertexCounter++] = x;
-      GLImmediate.vertexData[GLImmediate.vertexCounter++] = y;
-      GLImmediate.vertexData[GLImmediate.vertexCounter++] = 0;
-      GLImmediate.vertexData[GLImmediate.vertexCounter++] = 1;
-      assert(GLImmediate.vertexCounter << 2 < GL.MAX_TEMP_BUFFER_SIZE);
-      GLImmediate.addRendererComponent(GLImmediate.VERTEX, 4, GLctx.FLOAT);
-    }
-
-  function _glViewport(x0, x1, x2, x3) { GLctx['viewport'](x0, x1, x2, x3) }
-
-  
-  
-  
-  var wasmTableMirror = [];
-  
-  function getWasmTableEntry(funcPtr) {
-      var func = wasmTableMirror[funcPtr];
-      if (!func) {
-        if (funcPtr >= wasmTableMirror.length) wasmTableMirror.length = funcPtr + 1;
-        wasmTableMirror[funcPtr] = func = wasmTable.get(funcPtr);
-      }
-      assert(wasmTable.get(funcPtr) == func, "JavaScript-side Wasm function table mirror is out of date!");
-      return func;
-    }
-  function _glutPostRedisplay() {
-      if (GLUT.displayFunc && !GLUT.requestedAnimationFrame) {
-        GLUT.requestedAnimationFrame = true;
-        Browser.requestAnimationFrame(function() {
-          GLUT.requestedAnimationFrame = false;
-          Browser.mainLoop.runIter(function() {
-            getWasmTableEntry(GLUT.displayFunc)();
-          });
-        });
-      }
-    }
-  
-  
-  var GLUT = {initTime:null,idleFunc:null,displayFunc:null,keyboardFunc:null,keyboardUpFunc:null,specialFunc:null,specialUpFunc:null,reshapeFunc:null,motionFunc:null,passiveMotionFunc:null,mouseFunc:null,buttons:0,modifiers:0,initWindowWidth:256,initWindowHeight:256,initDisplayMode:18,windowX:0,windowY:0,windowWidth:0,windowHeight:0,requestedAnimationFrame:false,saveModifiers:function(event) {
-        GLUT.modifiers = 0;
-        if (event['shiftKey'])
-          GLUT.modifiers += 1; /* GLUT_ACTIVE_SHIFT */
-        if (event['ctrlKey'])
-          GLUT.modifiers += 2; /* GLUT_ACTIVE_CTRL */
-        if (event['altKey'])
-          GLUT.modifiers += 4; /* GLUT_ACTIVE_ALT */
-      },onMousemove:function(event) {
-        /* Send motion event only if the motion changed, prevents
-         * spamming our app with uncessary callback call. It does happen in
-         * Chrome on Windows.
-         */
-        var lastX = Browser.mouseX;
-        var lastY = Browser.mouseY;
-        Browser.calculateMouseEvent(event);
-        var newX = Browser.mouseX;
-        var newY = Browser.mouseY;
-        if (newX == lastX && newY == lastY) return;
-  
-        if (GLUT.buttons == 0 && event.target == Module["canvas"] && GLUT.passiveMotionFunc) {
-          event.preventDefault();
-          GLUT.saveModifiers(event);
-          getWasmTableEntry(GLUT.passiveMotionFunc)(lastX, lastY);
-        } else if (GLUT.buttons != 0 && GLUT.motionFunc) {
-          event.preventDefault();
-          GLUT.saveModifiers(event);
-          getWasmTableEntry(GLUT.motionFunc)(lastX, lastY);
-        }
-      },getSpecialKey:function(keycode) {
-          var key = null;
-          switch (keycode) {
-            case 8:  key = 120 /* backspace */; break;
-            case 46: key = 111 /* delete */; break;
-  
-            case 0x70 /*DOM_VK_F1*/: key = 1 /* GLUT_KEY_F1 */; break;
-            case 0x71 /*DOM_VK_F2*/: key = 2 /* GLUT_KEY_F2 */; break;
-            case 0x72 /*DOM_VK_F3*/: key = 3 /* GLUT_KEY_F3 */; break;
-            case 0x73 /*DOM_VK_F4*/: key = 4 /* GLUT_KEY_F4 */; break;
-            case 0x74 /*DOM_VK_F5*/: key = 5 /* GLUT_KEY_F5 */; break;
-            case 0x75 /*DOM_VK_F6*/: key = 6 /* GLUT_KEY_F6 */; break;
-            case 0x76 /*DOM_VK_F7*/: key = 7 /* GLUT_KEY_F7 */; break;
-            case 0x77 /*DOM_VK_F8*/: key = 8 /* GLUT_KEY_F8 */; break;
-            case 0x78 /*DOM_VK_F9*/: key = 9 /* GLUT_KEY_F9 */; break;
-            case 0x79 /*DOM_VK_F10*/: key = 10 /* GLUT_KEY_F10 */; break;
-            case 0x7a /*DOM_VK_F11*/: key = 11 /* GLUT_KEY_F11 */; break;
-            case 0x7b /*DOM_VK_F12*/: key = 12 /* GLUT_KEY_F12 */; break;
-            case 0x25 /*DOM_VK_LEFT*/: key = 100 /* GLUT_KEY_LEFT */; break;
-            case 0x26 /*DOM_VK_UP*/: key = 101 /* GLUT_KEY_UP */; break;
-            case 0x27 /*DOM_VK_RIGHT*/: key = 102 /* GLUT_KEY_RIGHT */; break;
-            case 0x28 /*DOM_VK_DOWN*/: key = 103 /* GLUT_KEY_DOWN */; break;
-            case 0x21 /*DOM_VK_PAGE_UP*/: key = 104 /* GLUT_KEY_PAGE_UP */; break;
-            case 0x22 /*DOM_VK_PAGE_DOWN*/: key = 105 /* GLUT_KEY_PAGE_DOWN */; break;
-            case 0x24 /*DOM_VK_HOME*/: key = 106 /* GLUT_KEY_HOME */; break;
-            case 0x23 /*DOM_VK_END*/: key = 107 /* GLUT_KEY_END */; break;
-            case 0x2d /*DOM_VK_INSERT*/: key = 108 /* GLUT_KEY_INSERT */; break;
-  
-            case 16   /*DOM_VK_SHIFT*/:
-            case 0x05 /*DOM_VK_LEFT_SHIFT*/:
-              key = 112 /* GLUT_KEY_SHIFT_L */;
-              break;
-            case 0x06 /*DOM_VK_RIGHT_SHIFT*/:
-              key = 113 /* GLUT_KEY_SHIFT_R */;
-              break;
-  
-            case 17   /*DOM_VK_CONTROL*/:
-            case 0x03 /*DOM_VK_LEFT_CONTROL*/:
-              key = 114 /* GLUT_KEY_CONTROL_L */;
-              break;
-            case 0x04 /*DOM_VK_RIGHT_CONTROL*/:
-              key = 115 /* GLUT_KEY_CONTROL_R */;
-              break;
-  
-            case 18   /*DOM_VK_ALT*/:
-            case 0x02 /*DOM_VK_LEFT_ALT*/:
-              key = 116 /* GLUT_KEY_ALT_L */;
-              break;
-            case 0x01 /*DOM_VK_RIGHT_ALT*/:
-              key = 117 /* GLUT_KEY_ALT_R */;
-              break;
-          };
-          return key;
-      },getASCIIKey:function(event) {
-        if (event['ctrlKey'] || event['altKey'] || event['metaKey']) return null;
-  
-        var keycode = event['keyCode'];
-  
-        /* The exact list is soooo hard to find in a canonical place! */
-  
-        if (48 <= keycode && keycode <= 57)
-          return keycode; // numeric  TODO handle shift?
-        if (65 <= keycode && keycode <= 90)
-          return event['shiftKey'] ? keycode : keycode + 32;
-        if (96 <= keycode && keycode <= 105)
-          return keycode - 48; // numpad numbers
-        if (106 <= keycode && keycode <= 111)
-          return keycode - 106 + 42; // *,+-./  TODO handle shift?
-  
-        switch (keycode) {
-          case 9:  // tab key
-          case 13: // return key
-          case 27: // escape
-          case 32: // space
-          case 61: // equal
-            return keycode;
-        }
-  
-        var s = event['shiftKey'];
-        switch (keycode) {
-          case 186: return s ? 58 : 59; // colon / semi-colon
-          case 187: return s ? 43 : 61; // add / equal (these two may be wrong)
-          case 188: return s ? 60 : 44; // less-than / comma
-          case 189: return s ? 95 : 45; // dash
-          case 190: return s ? 62 : 46; // greater-than / period
-          case 191: return s ? 63 : 47; // forward slash
-          case 219: return s ? 123 : 91; // open bracket
-          case 220: return s ? 124 : 47; // back slash
-          case 221: return s ? 125 : 93; // close braket
-          case 222: return s ? 34 : 39; // single quote
-        }
-  
-        return null;
-      },onKeydown:function(event) {
-        if (GLUT.specialFunc || GLUT.keyboardFunc) {
-          var key = GLUT.getSpecialKey(event['keyCode']);
-          if (key !== null) {
-            if (GLUT.specialFunc) {
-              event.preventDefault();
-              GLUT.saveModifiers(event);
-              getWasmTableEntry(GLUT.specialFunc)(key, Browser.mouseX, Browser.mouseY);
-            }
-          } else {
-            key = GLUT.getASCIIKey(event);
-            if (key !== null && GLUT.keyboardFunc) {
-              event.preventDefault();
-              GLUT.saveModifiers(event);
-              getWasmTableEntry(GLUT.keyboardFunc)(key, Browser.mouseX, Browser.mouseY);
-            }
+      var ret = undefined;
+      switch (name_) { // Handle a few trivial GLES values
+        case 0x8DFA: // GL_SHADER_COMPILER
+          ret = 1;
+          break;
+        case 0x8DF8: // GL_SHADER_BINARY_FORMATS
+          if (type != 0 && type != 1) {
+            GL.recordError(0x500); // GL_INVALID_ENUM
           }
-        }
-      },onKeyup:function(event) {
-        if (GLUT.specialUpFunc || GLUT.keyboardUpFunc) {
-          var key = GLUT.getSpecialKey(event['keyCode']);
-          if (key !== null) {
-            if (GLUT.specialUpFunc) {
-              event.preventDefault ();
-              GLUT.saveModifiers(event);
-              getWasmTableEntry(GLUT.specialUpFunc)(key, Browser.mouseX, Browser.mouseY);
+          return; // Do not write anything to the out pointer, since no binary formats are supported.
+        case 0x8DF9: // GL_NUM_SHADER_BINARY_FORMATS
+          ret = 0;
+          break;
+        case 0x86A2: // GL_NUM_COMPRESSED_TEXTURE_FORMATS
+          // WebGL doesn't have GL_NUM_COMPRESSED_TEXTURE_FORMATS (it's obsolete since GL_COMPRESSED_TEXTURE_FORMATS returns a JS array that can be queried for length),
+          // so implement it ourselves to allow C++ GLES2 code get the length.
+          var formats = GLctx.getParameter(0x86A3 /*GL_COMPRESSED_TEXTURE_FORMATS*/);
+          ret = formats ? formats.length : 0;
+          break;
+  
+      }
+  
+      if (ret === undefined) {
+        var result = GLctx.getParameter(name_);
+        switch (typeof result) {
+          case "number":
+            ret = result;
+            break;
+          case "boolean":
+            ret = result ? 1 : 0;
+            break;
+          case "string":
+            GL.recordError(0x500); // GL_INVALID_ENUM
+            return;
+          case "object":
+            if (result === null) {
+              // null is a valid result for some (e.g., which buffer is bound - perhaps nothing is bound), but otherwise
+              // can mean an invalid name_, which we need to report as an error
+              switch (name_) {
+                case 0x8894: // ARRAY_BUFFER_BINDING
+                case 0x8B8D: // CURRENT_PROGRAM
+                case 0x8895: // ELEMENT_ARRAY_BUFFER_BINDING
+                case 0x8CA6: // FRAMEBUFFER_BINDING or DRAW_FRAMEBUFFER_BINDING
+                case 0x8CA7: // RENDERBUFFER_BINDING
+                case 0x8069: // TEXTURE_BINDING_2D
+                case 0x85B5: // WebGL 2 GL_VERTEX_ARRAY_BINDING, or WebGL 1 extension OES_vertex_array_object GL_VERTEX_ARRAY_BINDING_OES
+                case 0x8514: { // TEXTURE_BINDING_CUBE_MAP
+                  ret = 0;
+                  break;
+                }
+                default: {
+                  GL.recordError(0x500); // GL_INVALID_ENUM
+                  return;
+                }
+              }
+            } else if (result instanceof Float32Array ||
+                       result instanceof Uint32Array ||
+                       result instanceof Int32Array ||
+                       result instanceof Array) {
+              for (var i = 0; i < result.length; ++i) {
+                switch (type) {
+                  case 0: HEAP32[(((p)+(i*4))>>2)] = result[i]; break;
+                  case 2: HEAPF32[(((p)+(i*4))>>2)] = result[i]; break;
+                  case 4: HEAP8[(((p)+(i))>>0)] = result[i] ? 1 : 0; break;
+                }
+              }
+              return;
+            } else {
+              try {
+                ret = result.name | 0;
+              } catch(e) {
+                GL.recordError(0x500); // GL_INVALID_ENUM
+                err('GL_INVALID_ENUM in glGet' + type + 'v: Unknown object returned from WebGL getParameter(' + name_ + ')! (error: ' + e + ')');
+                return;
+              }
             }
-          } else {
-            key = GLUT.getASCIIKey(event);
-            if (key !== null && GLUT.keyboardUpFunc) {
-              event.preventDefault ();
-              GLUT.saveModifiers(event);
-              getWasmTableEntry(GLUT.keyboardUpFunc)(key, Browser.mouseX, Browser.mouseY);
+            break;
+          default:
+            GL.recordError(0x500); // GL_INVALID_ENUM
+            err('GL_INVALID_ENUM in glGet' + type + 'v: Native code calling glGet' + type + 'v(' + name_ + ') and it returns ' + result + ' of type ' + typeof(result) + '!');
+            return;
+        }
+      }
+  
+      switch (type) {
+        case 1: writeI53ToI64(p, ret); break;
+        case 0: HEAP32[((p)>>2)] = ret; break;
+        case 2:   HEAPF32[((p)>>2)] = ret; break;
+        case 4: HEAP8[((p)>>0)] = ret ? 1 : 0; break;
+      }
+    }
+  
+  function _glGetBooleanv(name_, p) {
+      emscriptenWebGLGet(name_, p, 4);
+    }
+  
+  
+  function _glGetIntegerv(name_, p) {
+      emscriptenWebGLGet(name_, p, 0);
+    }
+  
+  function stringToNewUTF8(jsString) {
+      var length = lengthBytesUTF8(jsString)+1;
+      var cString = _malloc(length);
+      stringToUTF8(jsString, cString, length);
+      return cString;
+    }
+  
+  function _glGetString(name_) {
+      var ret = GL.stringCache[name_];
+      if (!ret) {
+        switch (name_) {
+          case 0x1F03 /* GL_EXTENSIONS */:
+            var exts = GLctx.getSupportedExtensions() || []; // .getSupportedExtensions() can return null if context is lost, so coerce to empty array.
+            exts = exts.concat(exts.map(function(e) { return "GL_" + e; }));
+            ret = stringToNewUTF8(exts.join(' '));
+            break;
+          case 0x1F00 /* GL_VENDOR */:
+          case 0x1F01 /* GL_RENDERER */:
+          case 0x9245 /* UNMASKED_VENDOR_WEBGL */:
+          case 0x9246 /* UNMASKED_RENDERER_WEBGL */:
+            var s = GLctx.getParameter(name_);
+            if (!s) {
+              GL.recordError(0x500/*GL_INVALID_ENUM*/);
             }
-          }
+            ret = s && stringToNewUTF8(s);
+            break;
+  
+          case 0x1F02 /* GL_VERSION */:
+            var glVersion = GLctx.getParameter(0x1F02 /*GL_VERSION*/);
+            // return GLES version string corresponding to the version of the WebGL context
+            {
+              glVersion = 'OpenGL ES 2.0 (' + glVersion + ')';
+            }
+            ret = stringToNewUTF8(glVersion);
+            break;
+          case 0x8B8C /* GL_SHADING_LANGUAGE_VERSION */:
+            var glslVersion = GLctx.getParameter(0x8B8C /*GL_SHADING_LANGUAGE_VERSION*/);
+            // extract the version number 'N.M' from the string 'WebGL GLSL ES N.M ...'
+            var ver_re = /^WebGL GLSL ES ([0-9]\.[0-9][0-9]?)(?:$| .*)/;
+            var ver_num = glslVersion.match(ver_re);
+            if (ver_num !== null) {
+              if (ver_num[1].length == 3) ver_num[1] = ver_num[1] + '0'; // ensure minor version has 2 digits
+              glslVersion = 'OpenGL ES GLSL ES ' + ver_num[1] + ' (' + glslVersion + ')';
+            }
+            ret = stringToNewUTF8(glslVersion);
+            break;
+          default:
+            GL.recordError(0x500/*GL_INVALID_ENUM*/);
+            // fall through
         }
-      },touchHandler:function(event) {
-        if (event.target != Module['canvas']) {
-          return;
-        }
-  
-        var touches = event.changedTouches,
-            main = touches[0],
-            type = "";
-  
-        switch (event.type) {
-          case "touchstart": type = "mousedown"; break;
-          case "touchmove": type = "mousemove"; break;
-          case "touchend": type = "mouseup"; break;
-          default: return;
-        }
-  
-        var simulatedEvent = document.createEvent("MouseEvent");
-        simulatedEvent.initMouseEvent(type, true, true, window, 1,
-                                      main.screenX, main.screenY,
-                                      main.clientX, main.clientY, false,
-                                      false, false, false, 0/*main*/, null);
-  
-        main.target.dispatchEvent(simulatedEvent);
-        event.preventDefault();
-      },onMouseButtonDown:function(event) {
-        Browser.calculateMouseEvent(event);
-  
-        GLUT.buttons |= (1 << event['button']);
-  
-        if (event.target == Module["canvas"] && GLUT.mouseFunc) {
-          try {
-            event.target.setCapture();
-          } catch (e) {}
-          event.preventDefault();
-          GLUT.saveModifiers(event);
-          getWasmTableEntry(GLUT.mouseFunc)(event['button'], 0/*GLUT_DOWN*/, Browser.mouseX, Browser.mouseY);
-        }
-      },onMouseButtonUp:function(event) {
-        Browser.calculateMouseEvent(event);
-  
-        GLUT.buttons &= ~(1 << event['button']);
-  
-        if (GLUT.mouseFunc) {
-          event.preventDefault();
-          GLUT.saveModifiers(event);
-          getWasmTableEntry(GLUT.mouseFunc)(event['button'], 1/*GLUT_UP*/, Browser.mouseX, Browser.mouseY);
-        }
-      },onMouseWheel:function(event) {
-        Browser.calculateMouseEvent(event);
-  
-        // cross-browser wheel delta
-        var e = window.event || event; // old IE support
-        // Note the minus sign that flips browser wheel direction (positive direction scrolls page down) to native wheel direction (positive direction is mouse wheel up)
-        var delta = -Browser.getMouseWheelDelta(event);
-        delta = (delta == 0) ? 0 : (delta > 0 ? Math.max(delta, 1) : Math.min(delta, -1)); // Quantize to integer so that minimum scroll is at least +/- 1.
-  
-        var button = 3; // wheel up
-        if (delta < 0) {
-          button = 4; // wheel down
-        }
-  
-        if (GLUT.mouseFunc) {
-          event.preventDefault();
-          GLUT.saveModifiers(event);
-          getWasmTableEntry(GLUT.mouseFunc)(button, 0/*GLUT_DOWN*/, Browser.mouseX, Browser.mouseY);
-        }
-      },onFullscreenEventChange:function(event) {
-        var width;
-        var height;
-        if (document["fullscreen"] || document["fullScreen"] || document["mozFullScreen"] || document["webkitIsFullScreen"]) {
-          width = screen["width"];
-          height = screen["height"];
-        } else {
-          width = GLUT.windowWidth;
-          height = GLUT.windowHeight;
-          // TODO set position
-          document.removeEventListener('fullscreenchange', GLUT.onFullscreenEventChange, true);
-          document.removeEventListener('mozfullscreenchange', GLUT.onFullscreenEventChange, true);
-          document.removeEventListener('webkitfullscreenchange', GLUT.onFullscreenEventChange, true);
-        }
-        Browser.setCanvasSize(width, height, true); // N.B. GLUT.reshapeFunc is also registered as a canvas resize callback.
-                                                    // Just call it once here.
-        /* Can't call _glutReshapeWindow as that requests cancelling fullscreen. */
-        if (GLUT.reshapeFunc) {
-          // out("GLUT.reshapeFunc (from FS): " + width + ", " + height);
-          getWasmTableEntry(GLUT.reshapeFunc)(width, height);
-        }
-        _glutPostRedisplay();
-      }};
-  function _glutCreateWindow(name) {
-      var contextAttributes = {
-        antialias: ((GLUT.initDisplayMode & 0x0080 /*GLUT_MULTISAMPLE*/) != 0),
-        depth: ((GLUT.initDisplayMode & 0x0010 /*GLUT_DEPTH*/) != 0),
-        stencil: ((GLUT.initDisplayMode & 0x0020 /*GLUT_STENCIL*/) != 0),
-        alpha: ((GLUT.initDisplayMode & 0x0008 /*GLUT_ALPHA*/) != 0)
-      };
-      Module.ctx = Browser.createContext(Module['canvas'], true, true, contextAttributes);
-      return Module.ctx ? 1 /* a new GLUT window ID for the created context */ : 0 /* failure */;
-    }
-
-  function _glutDisplayFunc(func) {
-      GLUT.displayFunc = func;
-    }
-
-  
-  
-  function _glutIdleFunc(func) {
-      function callback() {
-        if (GLUT.idleFunc) {
-          getWasmTableEntry(GLUT.idleFunc)();
-          safeSetTimeout(callback, 4); // HTML spec specifies a 4ms minimum delay on the main thread; workers might get more, but we standardize here
-        }
+        GL.stringCache[name_] = ret;
       }
-      if (!GLUT.idleFunc) {
-        safeSetTimeout(callback, 0);
-      }
-      GLUT.idleFunc = func;
-    }
-
-  
-  
-  function _glutInit(argcp, argv) {
-      // Ignore arguments
-      GLUT.initTime = Date.now();
-  
-      var isTouchDevice = 'ontouchstart' in document.documentElement;
-      if (isTouchDevice) {
-        // onMouseButtonDown, onMouseButtonUp and onMousemove handlers
-        // depend on Browser.mouseX / Browser.mouseY fields. Those fields
-        // don't get updated by touch events. So register a touchHandler
-        // function that translates the touch events to mouse events.
-  
-        // GLUT doesn't support touch, mouse only, so from touch events we
-        // are only looking at single finger touches to emulate left click,
-        // so we can use workaround and convert all touch events in mouse
-        // events. See touchHandler.
-        window.addEventListener("touchmove", GLUT.touchHandler, true);
-        window.addEventListener("touchstart", GLUT.touchHandler, true);
-        window.addEventListener("touchend", GLUT.touchHandler, true);
-      }
-  
-      window.addEventListener("keydown", GLUT.onKeydown, true);
-      window.addEventListener("keyup", GLUT.onKeyup, true);
-      window.addEventListener("mousemove", GLUT.onMousemove, true);
-      window.addEventListener("mousedown", GLUT.onMouseButtonDown, true);
-      window.addEventListener("mouseup", GLUT.onMouseButtonUp, true);
-      // IE9, Chrome, Safari, Opera
-      window.addEventListener("mousewheel", GLUT.onMouseWheel, true);
-      // Firefox
-      window.addEventListener("DOMMouseScroll", GLUT.onMouseWheel, true);
-  
-      Browser.resizeListeners.push(function(width, height) {
-        if (GLUT.reshapeFunc) {
-          getWasmTableEntry(GLUT.reshapeFunc)(width, height);
-        }
-      });
-  
-      __ATEXIT__.push(function() {
-        if (isTouchDevice) {
-          window.removeEventListener("touchmove", GLUT.touchHandler, true);
-          window.removeEventListener("touchstart", GLUT.touchHandler, true);
-          window.removeEventListener("touchend", GLUT.touchHandler, true);
-        }
-  
-        window.removeEventListener("keydown", GLUT.onKeydown, true);
-        window.removeEventListener("keyup", GLUT.onKeyup, true);
-        window.removeEventListener("mousemove", GLUT.onMousemove, true);
-        window.removeEventListener("mousedown", GLUT.onMouseButtonDown, true);
-        window.removeEventListener("mouseup", GLUT.onMouseButtonUp, true);
-        // IE9, Chrome, Safari, Opera
-        window.removeEventListener("mousewheel", GLUT.onMouseWheel, true);
-        // Firefox
-        window.removeEventListener("DOMMouseScroll", GLUT.onMouseWheel, true);
-  
-        Module["canvas"].width = Module["canvas"].height = 1;
-      });
-    }
-
-  function _glutInitDisplayMode(mode) {
-      GLUT.initDisplayMode = mode;
-    }
-
-  function _glutInitWindowSize(width, height) {
-      Browser.setCanvasSize( GLUT.initWindowWidth = width,
-                             GLUT.initWindowHeight = height );
-    }
-
-  
-  
-  
-  
-  function _glutReshapeWindow(width, height) {
-      Browser.exitFullscreen();
-      Browser.setCanvasSize(width, height, true); // N.B. GLUT.reshapeFunc is also registered as a canvas resize callback.
-                                                  // Just call it once here.
-      if (GLUT.reshapeFunc) {
-        getWasmTableEntry(GLUT.reshapeFunc)(width, height);
-      }
-      _glutPostRedisplay();
-    }
-  
-  
-  function _glutMainLoop() {
-      _glutReshapeWindow(Module['canvas'].width, Module['canvas'].height);
-      _glutPostRedisplay();
-      throw 'unwind';
-    }
-
-  function _glutReshapeFunc(func) {
-      GLUT.reshapeFunc = func;
-    }
-
-
-
-  function allocateUTF8OnStack(str) {
-      var size = lengthBytesUTF8(str) + 1;
-      var ret = stackAlloc(size);
-      stringToUTF8Array(str, HEAP8, ret, size);
       return ret;
     }
-
-GLImmediate.setupFuncs(); Browser.moduleContextCreatedCallbacks.push(function() { GLImmediate.init() });;
+  
+  function _glCreateShader(shaderType) {
+      var id = GL.getNewId(GL.shaders);
+      GL.shaders[id] = GLctx.createShader(shaderType);
+  
+      return id;
+    }
+  
+  function _glShaderSource(shader, count, string, length) {
+      var source = GL.getSource(shader, count, string, length);
+  
+      GLctx.shaderSource(GL.shaders[shader], source);
+    }
+  
+  function _glCompileShader(shader) {
+      GLctx.compileShader(GL.shaders[shader]);
+    }
+  
+  function _glAttachShader(program, shader) {
+      GLctx.attachShader(GL.programs[program], GL.shaders[shader]);
+    }
+  
+  function _glDetachShader(program, shader) {
+      GLctx.detachShader(GL.programs[program], GL.shaders[shader]);
+    }
+  
+  function _glUseProgram(program) {
+      program = GL.programs[program];
+      GLctx.useProgram(program);
+      // Record the currently active program so that we can access the uniform
+      // mapping table of that program.
+      GLctx.currentProgram = program;
+    }
+  
+  function _glDeleteProgram(id) {
+      if (!id) return;
+      var program = GL.programs[id];
+      if (!program) { // glDeleteProgram actually signals an error when deleting a nonexisting object, unlike some other GL delete functions.
+        GL.recordError(0x501 /* GL_INVALID_VALUE */);
+        return;
+      }
+      GLctx.deleteProgram(program);
+      program.name = 0;
+      GL.programs[id] = null;
+    }
+  
+  function _glBindAttribLocation(program, index, name) {
+      GLctx.bindAttribLocation(GL.programs[program], index, UTF8ToString(name));
+    }
+  
+  function _glLinkProgram(program) {
+      program = GL.programs[program];
+      GLctx.linkProgram(program);
+      // Invalidate earlier computed uniform->ID mappings, those have now become stale
+      program.uniformLocsById = 0; // Mark as null-like so that glGetUniformLocation() knows to populate this again.
+      program.uniformSizeAndIdsByName = {};
+  
+    }
+  
+  function _glBindBuffer(target, buffer) {
+      if (target == 0x8892 /*GL_ARRAY_BUFFER*/) {
+        GLctx.currentArrayBufferBinding = buffer;
+        GLImmediate.lastArrayBuffer = buffer;
+      } else if (target == 0x8893 /*GL_ELEMENT_ARRAY_BUFFER*/) {
+        GLctx.currentElementArrayBufferBinding = buffer;
+      }
+  
+      GLctx.bindBuffer(target, GL.buffers[buffer]);
+    }
+  
+  
+  function _glGetFloatv(name_, p) {
+      emscriptenWebGLGet(name_, p, 2);
+    }
+  
+  function _glHint(x0, x1) { GLctx['hint'](x0, x1) }
+  
+  function _glEnableVertexAttribArray(index) {
+      GLctx.enableVertexAttribArray(index);
+    }
+  
+  function _glDisableVertexAttribArray(index) {
+      GLctx.disableVertexAttribArray(index);
+    }
+  
+  function _glVertexAttribPointer(index, size, type, normalized, stride, ptr) {
+      GLctx.vertexAttribPointer(index, size, type, !!normalized, stride, ptr);
+    }
+  
+  function _glActiveTexture(x0) { GLctx['activeTexture'](x0) }
+  
+  
+  var GLEmulation = {fogStart:0,fogEnd:1,fogDensity:1,fogColor:null,fogMode:2048,fogEnabled:false,MAX_CLIP_PLANES:6,clipPlaneEnabled:[false,false,false,false,false,false],clipPlaneEquation:[],lightingEnabled:false,lightModelAmbient:null,lightModelLocalViewer:false,lightModelTwoSide:false,materialAmbient:null,materialDiffuse:null,materialSpecular:null,materialShininess:null,materialEmission:null,MAX_LIGHTS:8,lightEnabled:[false,false,false,false,false,false,false,false],lightAmbient:[],lightDiffuse:[],lightSpecular:[],lightPosition:[],alphaTestEnabled:false,alphaTestFunc:519,alphaTestRef:0,pointSize:1,vaos:[],currentVao:null,enabledVertexAttribArrays:{},hasRunInit:false,findToken:function(source, token) {
+        function isIdentChar(ch) {
+          if (ch >= 48 && ch <= 57) // 0-9
+            return true;
+          if (ch >= 65 && ch <= 90) // A-Z
+            return true;
+          if (ch >= 97 && ch <= 122) // a-z
+            return true;
+          return false;
+        }
+        var i = -1;
+        do {
+          i = source.indexOf(token, i + 1);
+          if (i < 0) {
+            break;
+          }
+          if (i > 0 && isIdentChar(source[i - 1])) {
+            continue;
+          }
+          i += token.length;
+          if (i < source.length - 1 && isIdentChar(source[i + 1])) {
+            continue;
+          }
+          return true;
+        } while (true);
+        return false;
+      },init:function() {
+        // Do not activate immediate/emulation code (e.g. replace glDrawElements) when in FULL_ES2 mode.
+        // We do not need full emulation, we instead emulate client-side arrays etc. in FULL_ES2 code in
+        // a straightforward manner, and avoid not having a bound buffer be ambiguous between es2 emulation
+        // code and legacy gl emulation code.
+  
+        if (GLEmulation.hasRunInit) {
+          return;
+        }
+        GLEmulation.hasRunInit = true;
+  
+        GLEmulation.fogColor = new Float32Array(4);
+  
+        for (var clipPlaneId = 0; clipPlaneId < GLEmulation.MAX_CLIP_PLANES; clipPlaneId++) {
+          GLEmulation.clipPlaneEquation[clipPlaneId] = new Float32Array(4);
+        }
+  
+        // set defaults for GL_LIGHTING
+        GLEmulation.lightModelAmbient = new Float32Array([0.2, 0.2, 0.2, 1.0]);
+        GLEmulation.materialAmbient = new Float32Array([0.2, 0.2, 0.2, 1.0]);
+        GLEmulation.materialDiffuse = new Float32Array([0.8, 0.8, 0.8, 1.0]);
+        GLEmulation.materialSpecular = new Float32Array([0.0, 0.0, 0.0, 1.0]);
+        GLEmulation.materialShininess = new Float32Array([0.0]);
+        GLEmulation.materialEmission = new Float32Array([0.0, 0.0, 0.0, 1.0]);
+  
+        for (var lightId = 0; lightId < GLEmulation.MAX_LIGHTS; lightId++) {
+          GLEmulation.lightAmbient[lightId] = new Float32Array([0.0, 0.0, 0.0, 1.0]);
+          GLEmulation.lightDiffuse[lightId] = lightId ? new Float32Array([0.0, 0.0, 0.0, 1.0]) : new Float32Array([1.0, 1.0, 1.0, 1.0]);
+          GLEmulation.lightSpecular[lightId] = lightId ? new Float32Array([0.0, 0.0, 0.0, 1.0]) : new Float32Array([1.0, 1.0, 1.0, 1.0]);
+          GLEmulation.lightPosition[lightId] = new Float32Array([0.0, 0.0, 1.0, 0.0]);
+        }
+  
+        // Add some emulation workarounds
+        err('WARNING: using emscripten GL emulation. This is a collection of limited workarounds, do not expect it to work.');
+  
+        // XXX some of the capabilities we don't support may lead to incorrect rendering, if we do not emulate them in shaders
+        var validCapabilities = {
+          0xB44: 1, // GL_CULL_FACE
+          0xBE2: 1, // GL_BLEND
+          0xBD0: 1, // GL_DITHER,
+          0xB90: 1, // GL_STENCIL_TEST
+          0xB71: 1, // GL_DEPTH_TEST
+          0xC11: 1, // GL_SCISSOR_TEST
+          0x8037: 1, // GL_POLYGON_OFFSET_FILL
+          0x809E: 1, // GL_SAMPLE_ALPHA_TO_COVERAGE
+          0x80A0: 1  // GL_SAMPLE_COVERAGE
+        };
+  
+  
+  
+        var glEnable = _glEnable;
+        _glEnable = _emscripten_glEnable = (cap) => {
+          // Clean up the renderer on any change to the rendering state. The optimization of
+          // skipping renderer setup is aimed at the case of multiple glDraw* right after each other
+          if (GLImmediate.lastRenderer) GLImmediate.lastRenderer.cleanup();
+          if (cap == 0xB60 /* GL_FOG */) {
+            if (GLEmulation.fogEnabled != true) {
+              GLImmediate.currentRenderer = null; // Fog parameter is part of the FFP shader state, we must re-lookup the renderer to use.
+              GLEmulation.fogEnabled = true;
+            }
+            return;
+          } else if ((cap >= 0x3000) && (cap < 0x3006)  /* GL_CLIP_PLANE0 to GL_CLIP_PLANE5 */) {
+            var clipPlaneId = cap - 0x3000;
+            if (GLEmulation.clipPlaneEnabled[clipPlaneId] != true) {
+              GLImmediate.currentRenderer = null; // clip plane parameter is part of the FFP shader state, we must re-lookup the renderer to use.
+              GLEmulation.clipPlaneEnabled[clipPlaneId] = true;
+            }
+            return;
+          } else if ((cap >= 0x4000) && (cap < 0x4008)  /* GL_LIGHT0 to GL_LIGHT7 */) {
+            var lightId = cap - 0x4000;
+            if (GLEmulation.lightEnabled[lightId] != true) {
+              GLImmediate.currentRenderer = null; // light parameter is part of the FFP shader state, we must re-lookup the renderer to use.
+              GLEmulation.lightEnabled[lightId] = true;
+            }
+            return;
+          } else if (cap == 0xB50 /* GL_LIGHTING */) {
+            if (GLEmulation.lightingEnabled != true) {
+              GLImmediate.currentRenderer = null; // light parameter is part of the FFP shader state, we must re-lookup the renderer to use.
+              GLEmulation.lightingEnabled = true;
+            }
+            return;
+          } else if (cap == 0xBC0 /* GL_ALPHA_TEST */) {
+            if (GLEmulation.alphaTestEnabled != true) {
+              GLImmediate.currentRenderer = null; // alpha testing is part of the FFP shader state, we must re-lookup the renderer to use.
+              GLEmulation.alphaTestEnabled = true;
+            }
+            return;
+          } else if (cap == 0xDE1 /* GL_TEXTURE_2D */) {
+            // XXX not according to spec, and not in desktop GL, but works in some GLES1.x apparently, so support
+            // it by forwarding to glEnableClientState
+            /* Actually, let's not, for now. (This sounds exceedingly broken)
+             * This is in gl_ps_workaround2.c.
+            _glEnableClientState(cap);
+            */
+            return;
+          } else if (!(cap in validCapabilities)) {
+            return;
+          }
+          glEnable(cap);
+        };
+        
+  
+        var glDisable = _glDisable;
+        _glDisable = _emscripten_glDisable = (cap) => {
+          if (GLImmediate.lastRenderer) GLImmediate.lastRenderer.cleanup();
+          if (cap == 0xB60 /* GL_FOG */) {
+            if (GLEmulation.fogEnabled != false) {
+              GLImmediate.currentRenderer = null; // Fog parameter is part of the FFP shader state, we must re-lookup the renderer to use.
+              GLEmulation.fogEnabled = false;
+            }
+            return;
+          } else if ((cap >= 0x3000) && (cap < 0x3006)  /* GL_CLIP_PLANE0 to GL_CLIP_PLANE5 */) {
+            var clipPlaneId = cap - 0x3000;
+            if (GLEmulation.clipPlaneEnabled[clipPlaneId] != false) {
+              GLImmediate.currentRenderer = null; // clip plane parameter is part of the FFP shader state, we must re-lookup the renderer to use.
+              GLEmulation.clipPlaneEnabled[clipPlaneId] = false;
+            }
+            return;
+          } else if ((cap >= 0x4000) && (cap < 0x4008)  /* GL_LIGHT0 to GL_LIGHT7 */) {
+            var lightId = cap - 0x4000;
+            if (GLEmulation.lightEnabled[lightId] != false) {
+              GLImmediate.currentRenderer = null; // light parameter is part of the FFP shader state, we must re-lookup the renderer to use.
+              GLEmulation.lightEnabled[lightId] = false;
+            }
+            return;
+          } else if (cap == 0xB50 /* GL_LIGHTING */) {
+            if (GLEmulation.lightingEnabled != false) {
+              GLImmediate.currentRenderer = null; // light parameter is part of the FFP shader state, we must re-lookup the renderer to use.
+              GLEmulation.lightingEnabled = false;
+            }
+            return;
+          } else if (cap == 0xBC0 /* GL_ALPHA_TEST */) {
+            if (GLEmulation.alphaTestEnabled != false) {
+              GLImmediate.currentRenderer = null; // alpha testing is part of the FFP shader state, we must re-lookup the renderer to use.
+              GLEmulation.alphaTestEnabled = false;
+            }
+            return;
+          } else if (cap == 0xDE1 /* GL_TEXTURE_2D */) {
+            // XXX not according to spec, and not in desktop GL, but works in some GLES1.x apparently, so support
+            // it by forwarding to glDisableClientState
+            /* Actually, let's not, for now. (This sounds exceedingly broken)
+             * This is in gl_ps_workaround2.c.
+            _glDisableClientState(cap);
+            */
+            return;
+          } else if (!(cap in validCapabilities)) {
+            return;
+          }
+          glDisable(cap);
+        };
+        
+  
+        _glIsEnabled = _emscripten_glIsEnabled = (cap) => {
+          if (cap == 0xB60 /* GL_FOG */) {
+            return GLEmulation.fogEnabled ? 1 : 0;
+          } else if ((cap >= 0x3000) && (cap < 0x3006)  /* GL_CLIP_PLANE0 to GL_CLIP_PLANE5 */) {
+            var clipPlaneId = cap - 0x3000;
+            return GLEmulation.clipPlaneEnabled[clipPlaneId] ? 1 : 0;
+          } else if ((cap >= 0x4000) && (cap < 0x4008)  /* GL_LIGHT0 to GL_LIGHT7 */) {
+            var lightId = cap - 0x4000;
+            return GLEmulation.lightEnabled[lightId] ? 1 : 0;
+          } else if (cap == 0xB50 /* GL_LIGHTING */) {
+            return GLEmulation.lightingEnabled ? 1 : 0;
+          } else if (cap == 0xBC0 /* GL_ALPHA_TEST */) {
+            return GLEmulation.alphaTestEnabled ? 1 : 0;
+          } else if (!(cap in validCapabilities)) {
+            return 0;
+          }
+          return GLctx.isEnabled(cap);
+        };
+        
+  
+        var glGetBooleanv = _glGetBooleanv;
+        _glGetBooleanv = _emscripten_glGetBooleanv = (pname, p) => {
+          var attrib = GLEmulation.getAttributeFromCapability(pname);
+          if (attrib !== null) {
+            var result = GLImmediate.enabledClientAttributes[attrib];
+            HEAP8[((p)>>0)] = result === true ? 1 : 0;
+            return;
+          }
+          glGetBooleanv(pname, p);
+        };
+        
+  
+        var glGetIntegerv = _glGetIntegerv;
+        _glGetIntegerv = _emscripten_glGetIntegerv = (pname, params) => {
+          switch (pname) {
+            case 0x84E2: pname = GLctx.MAX_TEXTURE_IMAGE_UNITS /* fake it */; break; // GL_MAX_TEXTURE_UNITS
+            case 0x8B4A: { // GL_MAX_VERTEX_UNIFORM_COMPONENTS_ARB
+              var result = GLctx.getParameter(GLctx.MAX_VERTEX_UNIFORM_VECTORS);
+              HEAP32[((params)>>2)] = result*4; // GLES gives num of 4-element vectors, GL wants individual components, so multiply
+              return;
+            }
+            case 0x8B49: { // GL_MAX_FRAGMENT_UNIFORM_COMPONENTS_ARB
+              var result = GLctx.getParameter(GLctx.MAX_FRAGMENT_UNIFORM_VECTORS);
+              HEAP32[((params)>>2)] = result*4; // GLES gives num of 4-element vectors, GL wants individual components, so multiply
+              return;
+            }
+            case 0x8B4B: { // GL_MAX_VARYING_FLOATS_ARB
+              var result = GLctx.getParameter(GLctx.MAX_VARYING_VECTORS);
+              HEAP32[((params)>>2)] = result*4; // GLES gives num of 4-element vectors, GL wants individual components, so multiply
+              return;
+            }
+            case 0x8871: pname = GLctx.MAX_COMBINED_TEXTURE_IMAGE_UNITS /* close enough */; break; // GL_MAX_TEXTURE_COORDS
+            case 0x807A: { // GL_VERTEX_ARRAY_SIZE
+              var attribute = GLImmediate.clientAttributes[GLImmediate.VERTEX];
+              HEAP32[((params)>>2)] = attribute ? attribute.size : 0;
+              return;
+            }
+            case 0x807B: { // GL_VERTEX_ARRAY_TYPE
+              var attribute = GLImmediate.clientAttributes[GLImmediate.VERTEX];
+              HEAP32[((params)>>2)] = attribute ? attribute.type : 0;
+              return;
+            }
+            case 0x807C: { // GL_VERTEX_ARRAY_STRIDE
+              var attribute = GLImmediate.clientAttributes[GLImmediate.VERTEX];
+              HEAP32[((params)>>2)] = attribute ? attribute.stride : 0;
+              return;
+            }
+            case 0x8081: { // GL_COLOR_ARRAY_SIZE
+              var attribute = GLImmediate.clientAttributes[GLImmediate.COLOR];
+              HEAP32[((params)>>2)] = attribute ? attribute.size : 0;
+              return;
+            }
+            case 0x8082: { // GL_COLOR_ARRAY_TYPE
+              var attribute = GLImmediate.clientAttributes[GLImmediate.COLOR];
+              HEAP32[((params)>>2)] = attribute ? attribute.type : 0;
+              return;
+            }
+            case 0x8083: { // GL_COLOR_ARRAY_STRIDE
+              var attribute = GLImmediate.clientAttributes[GLImmediate.COLOR];
+              HEAP32[((params)>>2)] = attribute ? attribute.stride : 0;
+              return;
+            }
+            case 0x8088: { // GL_TEXTURE_COORD_ARRAY_SIZE
+              var attribute = GLImmediate.clientAttributes[GLImmediate.TEXTURE0 + GLImmediate.clientActiveTexture];
+              HEAP32[((params)>>2)] = attribute ? attribute.size : 0;
+              return;
+            }
+            case 0x8089: { // GL_TEXTURE_COORD_ARRAY_TYPE
+              var attribute = GLImmediate.clientAttributes[GLImmediate.TEXTURE0 + GLImmediate.clientActiveTexture];
+              HEAP32[((params)>>2)] = attribute ? attribute.type : 0;
+              return;
+            }
+            case 0x808A: { // GL_TEXTURE_COORD_ARRAY_STRIDE
+              var attribute = GLImmediate.clientAttributes[GLImmediate.TEXTURE0 + GLImmediate.clientActiveTexture];
+              HEAP32[((params)>>2)] = attribute ? attribute.stride : 0;
+              return;
+            }
+            case 0x0D32: { // GL_MAX_CLIP_PLANES
+              HEAP32[((params)>>2)] = GLEmulation.MAX_CLIP_PLANES; // all implementations need to support atleast 6
+              return;
+            }
+            case 0x0BA0: { // GL_MATRIX_MODE
+              HEAP32[((params)>>2)] = GLImmediate.currentMatrix + 0x1700;
+              return;
+            }
+            case 0x0BC1: { // GL_ALPHA_TEST_FUNC
+              HEAP32[((params)>>2)] = GLEmulation.alphaTestFunc;
+              return;
+            }
+          }
+          glGetIntegerv(pname, params);
+        };
+        
+  
+        var glGetString = _glGetString;
+        _glGetString = _emscripten_glGetString = (name_) => {
+          if (GL.stringCache[name_]) return GL.stringCache[name_];
+          switch (name_) {
+            case 0x1F03 /* GL_EXTENSIONS */: // Add various extensions that we can support
+              var ret = stringToNewUTF8((GLctx.getSupportedExtensions() || []).join(' ') +
+                     ' GL_EXT_texture_env_combine GL_ARB_texture_env_crossbar GL_ATI_texture_env_combine3 GL_NV_texture_env_combine4 GL_EXT_texture_env_dot3 GL_ARB_multitexture GL_ARB_vertex_buffer_object GL_EXT_framebuffer_object GL_ARB_vertex_program GL_ARB_fragment_program GL_ARB_shading_language_100 GL_ARB_shader_objects GL_ARB_vertex_shader GL_ARB_fragment_shader GL_ARB_texture_cube_map GL_EXT_draw_range_elements' +
+                     (GL.currentContext.compressionExt ? ' GL_ARB_texture_compression GL_EXT_texture_compression_s3tc' : '') +
+                     (GL.currentContext.anisotropicExt ? ' GL_EXT_texture_filter_anisotropic' : '')
+              );
+              GL.stringCache[name_] = ret;
+              return ret;
+          }
+          return glGetString(name_);
+        };
+        
+  
+        // Do some automatic rewriting to work around GLSL differences. Note that this must be done in
+        // tandem with the rest of the program, by itself it cannot suffice.
+        // Note that we need to remember shader types for this rewriting, saving sources makes it easier to debug.
+        GL.shaderInfos = {};
+        var glCreateShader = _glCreateShader;
+        _glCreateShader = _emscripten_glCreateShader = (shaderType) => {
+          var id = glCreateShader(shaderType);
+          GL.shaderInfos[id] = {
+            type: shaderType,
+            ftransform: false
+          };
+          return id;
+        };
+        
+  
+        function ensurePrecision(source) {
+          if (!/precision +(low|medium|high)p +float *;/.test(source)) {
+            source = '#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n' + source;
+          }
+          return source;
+        }
+  
+        var glShaderSource = _glShaderSource;
+        _glShaderSource = _emscripten_glShaderSource = (shader, count, string, length) => {
+          var source = GL.getSource(shader, count, string, length);
+          // XXX We add attributes and uniforms to shaders. The program can ask for the # of them, and see the
+          // ones we generated, potentially confusing it? Perhaps we should hide them.
+          if (GL.shaderInfos[shader].type == GLctx.VERTEX_SHADER) {
+            // Replace ftransform() with explicit project/modelview transforms, and add position and matrix info.
+            var has_pm = source.search(/u_projection/) >= 0;
+            var has_mm = source.search(/u_modelView/) >= 0;
+            var has_pv = source.search(/a_position/) >= 0;
+            var need_pm = 0, need_mm = 0, need_pv = 0;
+            var old = source;
+            source = source.replace(/ftransform\(\)/g, '(u_projection * u_modelView * a_position)');
+            if (old != source) need_pm = need_mm = need_pv = 1;
+            old = source;
+            source = source.replace(/gl_ProjectionMatrix/g, 'u_projection');
+            if (old != source) need_pm = 1;
+            old = source;
+            source = source.replace(/gl_ModelViewMatrixTranspose\[2\]/g, 'vec4(u_modelView[0][2], u_modelView[1][2], u_modelView[2][2], u_modelView[3][2])'); // XXX extremely inefficient
+            if (old != source) need_mm = 1;
+            old = source;
+            source = source.replace(/gl_ModelViewMatrix/g, 'u_modelView');
+            if (old != source) need_mm = 1;
+            old = source;
+            source = source.replace(/gl_Vertex/g, 'a_position');
+            if (old != source) need_pv = 1;
+            old = source;
+            source = source.replace(/gl_ModelViewProjectionMatrix/g, '(u_projection * u_modelView)');
+            if (old != source) need_pm = need_mm = 1;
+            if (need_pv && !has_pv) source = 'attribute vec4 a_position; \n' + source;
+            if (need_mm && !has_mm) source = 'uniform mat4 u_modelView; \n' + source;
+            if (need_pm && !has_pm) source = 'uniform mat4 u_projection; \n' + source;
+            GL.shaderInfos[shader].ftransform = need_pm || need_mm || need_pv; // we will need to provide the fixed function stuff as attributes and uniforms
+            for (var i = 0; i < GLImmediate.MAX_TEXTURES; i++) {
+              // XXX To handle both regular texture mapping and cube mapping, we use vec4 for tex coordinates.
+              old = source;
+              var need_vtc = source.search('v_texCoord' + i) == -1;
+              source = source.replace(new RegExp('gl_TexCoord\\[' + i + '\\]', 'g'), 'v_texCoord' + i)
+                             .replace(new RegExp('gl_MultiTexCoord' + i, 'g'), 'a_texCoord' + i);
+              if (source != old) {
+                source = 'attribute vec4 a_texCoord' + i + '; \n' + source;
+                if (need_vtc) {
+                  source = 'varying vec4 v_texCoord' + i + ';   \n' + source;
+                }
+              }
+  
+              old = source;
+              source = source.replace(new RegExp('gl_TextureMatrix\\[' + i + '\\]', 'g'), 'u_textureMatrix' + i);
+              if (source != old) {
+                source = 'uniform mat4 u_textureMatrix' + i + '; \n' + source;
+              }
+            }
+            if (source.includes('gl_FrontColor')) {
+              source = 'varying vec4 v_color; \n' +
+                       source.replace(/gl_FrontColor/g, 'v_color');
+            }
+            if (source.includes('gl_Color')) {
+              source = 'attribute vec4 a_color; \n' +
+                       source.replace(/gl_Color/g, 'a_color');
+            }
+            if (source.includes('gl_Normal')) {
+              source = 'attribute vec3 a_normal; \n' +
+                       source.replace(/gl_Normal/g, 'a_normal');
+            }
+            // fog
+            if (source.includes('gl_FogFragCoord')) {
+              source = 'varying float v_fogFragCoord;   \n' +
+                       source.replace(/gl_FogFragCoord/g, 'v_fogFragCoord');
+            }
+          } else { // Fragment shader
+            for (i = 0; i < GLImmediate.MAX_TEXTURES; i++) {
+              old = source;
+              source = source.replace(new RegExp('gl_TexCoord\\[' + i + '\\]', 'g'), 'v_texCoord' + i);
+              if (source != old) {
+                source = 'varying vec4 v_texCoord' + i + ';   \n' + source;
+              }
+            }
+            if (source.includes('gl_Color')) {
+              source = 'varying vec4 v_color; \n' + source.replace(/gl_Color/g, 'v_color');
+            }
+            if (source.includes('gl_Fog.color')) {
+              source = 'uniform vec4 u_fogColor;   \n' +
+                       source.replace(/gl_Fog.color/g, 'u_fogColor');
+            }
+            if (source.includes('gl_Fog.end')) {
+              source = 'uniform float u_fogEnd;   \n' +
+                       source.replace(/gl_Fog.end/g, 'u_fogEnd');
+            }
+            if (source.includes('gl_Fog.scale')) {
+              source = 'uniform float u_fogScale;   \n' +
+                       source.replace(/gl_Fog.scale/g, 'u_fogScale');
+            }
+            if (source.includes('gl_Fog.density')) {
+              source = 'uniform float u_fogDensity;   \n' +
+                       source.replace(/gl_Fog.density/g, 'u_fogDensity');
+            }
+            if (source.includes('gl_FogFragCoord')) {
+              source = 'varying float v_fogFragCoord;   \n' +
+                       source.replace(/gl_FogFragCoord/g, 'v_fogFragCoord');
+            }
+            source = ensurePrecision(source);
+          }
+          GLctx.shaderSource(GL.shaders[shader], source);
+        };
+        
+  
+        var glCompileShader = _glCompileShader;
+        _glCompileShader = _emscripten_glCompileShader = (shader) => {
+          GLctx.compileShader(GL.shaders[shader]);
+        };
+        
+  
+        GL.programShaders = {};
+        var glAttachShader = _glAttachShader;
+        _glAttachShader = _emscripten_glAttachShader = (program, shader) => {
+          if (!GL.programShaders[program]) GL.programShaders[program] = [];
+          GL.programShaders[program].push(shader);
+          glAttachShader(program, shader);
+        };
+        
+  
+        var glDetachShader = _glDetachShader;
+        _glDetachShader = _emscripten_glDetachShader = (program, shader) => {
+          var programShader = GL.programShaders[program];
+          if (!programShader) {
+            err('WARNING: _glDetachShader received invalid program: ' + program);
+            return;
+          }
+          var index = programShader.indexOf(shader);
+          programShader.splice(index, 1);
+          glDetachShader(program, shader);
+        };
+        
+  
+        var glUseProgram = _glUseProgram;
+        _glUseProgram = _emscripten_glUseProgram = (program) => {
+          if (GL.currProgram != program) {
+            GLImmediate.currentRenderer = null; // This changes the FFP emulation shader program, need to recompute that.
+            GL.currProgram = program;
+            GLImmediate.fixedFunctionProgram = 0;
+            glUseProgram(program);
+          }
+        }
+        
+  
+        var glDeleteProgram = _glDeleteProgram;
+        _glDeleteProgram = _emscripten_glDeleteProgram = (program) => {
+          glDeleteProgram(program);
+          if (program == GL.currProgram) {
+            GLImmediate.currentRenderer = null; // This changes the FFP emulation shader program, need to recompute that.
+            GL.currProgram = 0;
+          }
+        };
+        
+  
+        // If attribute 0 was not bound, bind it to 0 for WebGL performance reasons. Track if 0 is free for that.
+        var zeroUsedPrograms = {};
+        var glBindAttribLocation = _glBindAttribLocation;
+        _glBindAttribLocation = _emscripten_glBindAttribLocation = (program, index, name) => {
+          if (index == 0) zeroUsedPrograms[program] = true;
+          glBindAttribLocation(program, index, name);
+        };
+        
+  
+        var glLinkProgram = _glLinkProgram;
+        _glLinkProgram = _emscripten_glLinkProgram = (program) => {
+          if (!(program in zeroUsedPrograms)) {
+            GLctx.bindAttribLocation(GL.programs[program], 0, 'a_position');
+          }
+          glLinkProgram(program);
+        };
+        
+  
+        var glBindBuffer = _glBindBuffer;
+        _glBindBuffer = _emscripten_glBindBuffer = (target, buffer) => {
+          glBindBuffer(target, buffer);
+          if (target == GLctx.ARRAY_BUFFER) {
+            if (GLEmulation.currentVao) {
+              assert(GLEmulation.currentVao.arrayBuffer == buffer || GLEmulation.currentVao.arrayBuffer == 0 || buffer == 0, 'TODO: support for multiple array buffers in vao');
+              GLEmulation.currentVao.arrayBuffer = buffer;
+            }
+          } else if (target == GLctx.ELEMENT_ARRAY_BUFFER) {
+            if (GLEmulation.currentVao) GLEmulation.currentVao.elementArrayBuffer = buffer;
+          }
+        };
+        
+  
+        var glGetFloatv = _glGetFloatv;
+        _glGetFloatv = _emscripten_glGetFloatv = (pname, params) => {
+          if (pname == 0xBA6) { // GL_MODELVIEW_MATRIX
+            HEAPF32.set(GLImmediate.matrix[0/*m*/], params >> 2);
+          } else if (pname == 0xBA7) { // GL_PROJECTION_MATRIX
+            HEAPF32.set(GLImmediate.matrix[1/*p*/], params >> 2);
+          } else if (pname == 0xBA8) { // GL_TEXTURE_MATRIX
+            HEAPF32.set(GLImmediate.matrix[2/*t*/ + GLImmediate.clientActiveTexture], params >> 2);
+          } else if (pname == 0xB66) { // GL_FOG_COLOR
+            HEAPF32.set(GLEmulation.fogColor, params >> 2);
+          } else if (pname == 0xB63) { // GL_FOG_START
+            HEAPF32[((params)>>2)] = GLEmulation.fogStart;
+          } else if (pname == 0xB64) { // GL_FOG_END
+            HEAPF32[((params)>>2)] = GLEmulation.fogEnd;
+          } else if (pname == 0xB62) { // GL_FOG_DENSITY
+            HEAPF32[((params)>>2)] = GLEmulation.fogDensity;
+          } else if (pname == 0xB65) { // GL_FOG_MODE
+            HEAPF32[((params)>>2)] = GLEmulation.fogMode;
+          } else if (pname == 0xB53) { // GL_LIGHT_MODEL_AMBIENT
+            HEAPF32[((params)>>2)] = GLEmulation.lightModelAmbient[0];
+            HEAPF32[(((params)+(4))>>2)] = GLEmulation.lightModelAmbient[1];
+            HEAPF32[(((params)+(8))>>2)] = GLEmulation.lightModelAmbient[2];
+            HEAPF32[(((params)+(12))>>2)] = GLEmulation.lightModelAmbient[3];
+          } else if (pname == 0xBC2) { // GL_ALPHA_TEST_REF
+            HEAPF32[((params)>>2)] = GLEmulation.alphaTestRef;
+          } else {
+            glGetFloatv(pname, params);
+          }
+        };
+        
+  
+        var glHint = _glHint;
+        _glHint = _emscripten_glHint = (target, mode) => {
+          if (target == 0x84EF) { // GL_TEXTURE_COMPRESSION_HINT
+            return;
+          }
+          glHint(target, mode);
+        };
+        
+  
+        var glEnableVertexAttribArray = _glEnableVertexAttribArray;
+        _glEnableVertexAttribArray = _emscripten_glEnableVertexAttribArray = (index) => {
+          glEnableVertexAttribArray(index);
+          GLEmulation.enabledVertexAttribArrays[index] = 1;
+          if (GLEmulation.currentVao) GLEmulation.currentVao.enabledVertexAttribArrays[index] = 1;
+        };
+        
+  
+        var glDisableVertexAttribArray = _glDisableVertexAttribArray;
+        _glDisableVertexAttribArray = _emscripten_glDisableVertexAttribArray = (index) => {
+          glDisableVertexAttribArray(index);
+          delete GLEmulation.enabledVertexAttribArrays[index];
+          if (GLEmulation.currentVao) delete GLEmulation.currentVao.enabledVertexAttribArrays[index];
+        };
+        
+  
+        var glVertexAttribPointer = _glVertexAttribPointer;
+        _glVertexAttribPointer = _emscripten_glVertexAttribPointer = (index, size, type, normalized, stride, pointer) => {
+          glVertexAttribPointer(index, size, type, normalized, stride, pointer);
+          if (GLEmulation.currentVao) { // TODO: avoid object creation here? likely not hot though
+            GLEmulation.currentVao.vertexAttribPointers[index] = [index, size, type, normalized, stride, pointer];
+          }
+        };
+        
+      },getAttributeFromCapability:function(cap) {
+        var attrib = null;
+        switch (cap) {
+          case 0xDE1: // GL_TEXTURE_2D - XXX not according to spec, and not in desktop GL, but works in some GLES1.x apparently, so support it
+            abort("GL_TEXTURE_2D is not a spec-defined capability for gl{Enable,Disable}ClientState.");
+            // Fall through:
+          case 0x8078: // GL_TEXTURE_COORD_ARRAY
+            attrib = GLImmediate.TEXTURE0 + GLImmediate.clientActiveTexture; break;
+          case 0x8074: // GL_VERTEX_ARRAY
+            attrib = GLImmediate.VERTEX; break;
+          case 0x8075: // GL_NORMAL_ARRAY
+            attrib = GLImmediate.NORMAL; break;
+          case 0x8076: // GL_COLOR_ARRAY
+            attrib = GLImmediate.COLOR; break;
+        }
+        return attrib;
+      }};
+var GLctx;;
 
       // exports
       Module["requestFullscreen"] = function Module_requestFullscreen(lockPointer, resizeCanvas) { Browser.requestFullscreen(lockPointer, resizeCanvas) };
@@ -7819,21 +7740,16 @@ GLImmediate.setupFuncs(); Browser.moduleContextCreatedCallbacks.push(function() 
       Module["createContext"] = function Module_createContext(canvas, useWebGL, setInModule, webGLContextAttributes) { return Browser.createContext(canvas, useWebGL, setInModule, webGLContextAttributes) };
       var preloadedImages = {};
       var preloadedAudios = {};;
-var GLctx;;
 GLEmulation.init();;
+GLImmediate.setupFuncs(); Browser.moduleContextCreatedCallbacks.push(function() { GLImmediate.init() });;
 function checkIncomingModuleAPI() {
   ignoredModuleProp('fetchSettings');
 }
 var wasmImports = {
   "emscripten_resize_heap": _emscripten_resize_heap,
-  "glBegin": _glBegin,
   "glClear": _glClear,
   "glClearColor": _glClearColor,
-  "glColor3f": _glColor3f,
-  "glEnd": _glEnd,
   "glFlush": _glFlush,
-  "glOrtho": _glOrtho,
-  "glVertex2f": _glVertex2f,
   "glViewport": _glViewport,
   "glutCreateWindow": _glutCreateWindow,
   "glutDisplayFunc": _glutDisplayFunc,
