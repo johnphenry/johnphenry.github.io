@@ -7336,6 +7336,8 @@ function dbg(text) {
 
   function _glClear(x0) { GLctx['clear'](x0) }
 
+  function _glClearColor(x0, x1, x2, x3) { GLctx['clearColor'](x0, x1, x2, x3) }
+
   function _emscripten_glColor4f(r, g, b, a) {
       r = Math.max(Math.min(r, 1), 0);
       g = Math.max(Math.min(g, 1), 0);
@@ -7360,13 +7362,6 @@ function dbg(text) {
     }
   function _glColor3f(r, g, b) {
       _emscripten_glColor4f(r, g, b, 1);
-    }
-
-  function _emscripten_glColor3f(r, g, b) {
-      _emscripten_glColor4f(r, g, b, 1);
-    }
-  function _glColor3fv(p) {
-      _emscripten_glColor3f(HEAPF32[((p)>>2)], HEAPF32[(((p)+(4))>>2)], HEAPF32[(((p)+(8))>>2)]);
     }
 
 
@@ -7442,33 +7437,11 @@ function dbg(text) {
       }
     }
 
-  function _emscripten_glNormal3f(x, y, z) {
-      assert(GLImmediate.mode >= 0); // must be in begin/end
-      GLImmediate.vertexData[GLImmediate.vertexCounter++] = x;
-      GLImmediate.vertexData[GLImmediate.vertexCounter++] = y;
-      GLImmediate.vertexData[GLImmediate.vertexCounter++] = z;
-      assert(GLImmediate.vertexCounter << 2 < GL.MAX_TEMP_BUFFER_SIZE);
-      GLImmediate.addRendererComponent(GLImmediate.NORMAL, 3, GLctx.FLOAT);
-    }
-  function _glNormal3fv(p) {
-      _emscripten_glNormal3f(HEAPF32[((p)>>2)], HEAPF32[(((p)+(4))>>2)], HEAPF32[(((p)+(8))>>2)]);
-    }
-
-  function _glPopMatrix() {
-      if (GLImmediate.matrixStack[GLImmediate.currentMatrix].length == 0) {
-        GL.recordError(0x504/*GL_STACK_UNDERFLOW*/);
-        return;
-      }
+  function _glOrtho(left, right, bottom, top_, nearVal, farVal) {
       GLImmediate.matricesModified = true;
       GLImmediate.matrixVersion[GLImmediate.currentMatrix] = (GLImmediate.matrixVersion[GLImmediate.currentMatrix] + 1)|0;
-      GLImmediate.matrix[GLImmediate.currentMatrix] = GLImmediate.matrixStack[GLImmediate.currentMatrix].pop();
-    }
-
-  function _glPushMatrix() {
-      GLImmediate.matricesModified = true;
-      GLImmediate.matrixVersion[GLImmediate.currentMatrix] = (GLImmediate.matrixVersion[GLImmediate.currentMatrix] + 1)|0;
-      GLImmediate.matrixStack[GLImmediate.currentMatrix].push(
-          Array.prototype.slice.call(GLImmediate.matrix[GLImmediate.currentMatrix]));
+      GLImmediate.matrixLib.mat4.multiply(GLImmediate.matrix[GLImmediate.currentMatrix],
+          GLImmediate.matrixLib.mat4.ortho(left, right, bottom, top_, nearVal, farVal));
     }
 
   function _glRotatef(angle, x, y, z) {
@@ -7477,29 +7450,20 @@ function dbg(text) {
       GLImmediate.matrixLib.mat4.rotate(GLImmediate.matrix[GLImmediate.currentMatrix], angle*Math.PI/180, [x, y, z]);
     }
 
-  function _glScalef(x, y, z) {
-      GLImmediate.matricesModified = true;
-      GLImmediate.matrixVersion[GLImmediate.currentMatrix] = (GLImmediate.matrixVersion[GLImmediate.currentMatrix] + 1)|0;
-      GLImmediate.matrixLib.mat4.scale(GLImmediate.matrix[GLImmediate.currentMatrix], [x, y, z]);
-    }
-
   function _glTranslatef(x, y, z) {
       GLImmediate.matricesModified = true;
       GLImmediate.matrixVersion[GLImmediate.currentMatrix] = (GLImmediate.matrixVersion[GLImmediate.currentMatrix] + 1)|0;
       GLImmediate.matrixLib.mat4.translate(GLImmediate.matrix[GLImmediate.currentMatrix], [x, y, z]);
     }
 
-  function _emscripten_glVertex3f(x, y, z) {
+  function _glVertex2f(x, y) {
       assert(GLImmediate.mode >= 0); // must be in begin/end
       GLImmediate.vertexData[GLImmediate.vertexCounter++] = x;
       GLImmediate.vertexData[GLImmediate.vertexCounter++] = y;
-      GLImmediate.vertexData[GLImmediate.vertexCounter++] = z;
+      GLImmediate.vertexData[GLImmediate.vertexCounter++] = 0;
       GLImmediate.vertexData[GLImmediate.vertexCounter++] = 1;
       assert(GLImmediate.vertexCounter << 2 < GL.MAX_TEMP_BUFFER_SIZE);
       GLImmediate.addRendererComponent(GLImmediate.VERTEX, 4, GLctx.FLOAT);
-    }
-  function _glVertex3fv(p) {
-      _emscripten_glVertex3f(HEAPF32[((p)>>2)], HEAPF32[(((p)+(4))>>2)], HEAPF32[(((p)+(8))>>2)]);
     }
 
   function _glViewport(x0, x1, x2, x3) { GLctx['viewport'](x0, x1, x2, x3) }
@@ -7943,21 +7907,18 @@ var wasmImports = {
   "emscripten_resize_heap": _emscripten_resize_heap,
   "glBegin": _glBegin,
   "glClear": _glClear,
+  "glClearColor": _glClearColor,
   "glColor3f": _glColor3f,
-  "glColor3fv": _glColor3fv,
   "glEnable": _glEnable,
   "glEnd": _glEnd,
   "glFlush": _glFlush,
   "glLightfv": _glLightfv,
   "glLoadIdentity": _glLoadIdentity,
   "glMatrixMode": _glMatrixMode,
-  "glNormal3fv": _glNormal3fv,
-  "glPopMatrix": _glPopMatrix,
-  "glPushMatrix": _glPushMatrix,
+  "glOrtho": _glOrtho,
   "glRotatef": _glRotatef,
-  "glScalef": _glScalef,
   "glTranslatef": _glTranslatef,
-  "glVertex3fv": _glVertex3fv,
+  "glVertex2f": _glVertex2f,
   "glViewport": _glViewport,
   "gluPerspective": _gluPerspective,
   "glutCreateWindow": _glutCreateWindow,
