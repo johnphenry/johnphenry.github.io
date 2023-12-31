@@ -7364,7 +7364,6 @@ function dbg(text) {
       _emscripten_glColor4f(r, g, b, 1);
     }
 
-
   function _glEnd() {
       GLImmediate.prepareClientAttributes(GLImmediate.rendererComponents[GLImmediate.VERTEX], true);
       GLImmediate.firstVertex = 0;
@@ -7382,78 +7381,11 @@ function dbg(text) {
 
   function _glFlush() { GLctx['flush']() }
 
-  function _glLightfv(light, pname, param) {
-      if ((light >= 0x4000) && (light < 0x4008)  /* GL_LIGHT0 to GL_LIGHT7 */) {
-        var lightId = light - 0x4000;
-  
-        if (pname == 0x1200) { // GL_AMBIENT
-          GLEmulation.lightAmbient[lightId][0] = HEAPF32[((param)>>2)];
-          GLEmulation.lightAmbient[lightId][1] = HEAPF32[(((param)+(4))>>2)];
-          GLEmulation.lightAmbient[lightId][2] = HEAPF32[(((param)+(8))>>2)];
-          GLEmulation.lightAmbient[lightId][3] = HEAPF32[(((param)+(12))>>2)];
-        } else if (pname == 0x1201) { // GL_DIFFUSE
-          GLEmulation.lightDiffuse[lightId][0] = HEAPF32[((param)>>2)];
-          GLEmulation.lightDiffuse[lightId][1] = HEAPF32[(((param)+(4))>>2)];
-          GLEmulation.lightDiffuse[lightId][2] = HEAPF32[(((param)+(8))>>2)];
-          GLEmulation.lightDiffuse[lightId][3] = HEAPF32[(((param)+(12))>>2)];
-        } else if (pname == 0x1202) { // GL_SPECULAR
-          GLEmulation.lightSpecular[lightId][0] = HEAPF32[((param)>>2)];
-          GLEmulation.lightSpecular[lightId][1] = HEAPF32[(((param)+(4))>>2)];
-          GLEmulation.lightSpecular[lightId][2] = HEAPF32[(((param)+(8))>>2)];
-          GLEmulation.lightSpecular[lightId][3] = HEAPF32[(((param)+(12))>>2)];
-        } else if (pname == 0x1203) { // GL_POSITION
-          GLEmulation.lightPosition[lightId][0] = HEAPF32[((param)>>2)];
-          GLEmulation.lightPosition[lightId][1] = HEAPF32[(((param)+(4))>>2)];
-          GLEmulation.lightPosition[lightId][2] = HEAPF32[(((param)+(8))>>2)];
-          GLEmulation.lightPosition[lightId][3] = HEAPF32[(((param)+(12))>>2)];
-  
-          // multiply position with current modelviewmatrix
-          GLImmediate.matrixLib.mat4.multiplyVec4(GLImmediate.matrix[0], GLEmulation.lightPosition[lightId]);
-        } else {
-          throw 'glLightfv: TODO: ' + pname;
-        }
-      }
-    }
-
-  
-  function _glLoadIdentity() {
-      GLImmediate.matricesModified = true;
-      GLImmediate.matrixVersion[GLImmediate.currentMatrix] = (GLImmediate.matrixVersion[GLImmediate.currentMatrix] + 1)|0;
-      GLImmediate.matrixLib.mat4.identity(GLImmediate.matrix[GLImmediate.currentMatrix]);
-    }
-
-  
-  
-  function _glMatrixMode(mode) {
-      if (mode == 0x1700 /* GL_MODELVIEW */) {
-        GLImmediate.currentMatrix = 0/*m*/;
-      } else if (mode == 0x1701 /* GL_PROJECTION */) {
-        GLImmediate.currentMatrix = 1/*p*/;
-      } else if (mode == 0x1702) { // GL_TEXTURE
-        GLImmediate.useTextureMatrix = true;
-        GLImmediate.currentMatrix = 2/*t*/ + GLImmediate.TexEnvJIT.getActiveTexture();
-      } else {
-        throw "Wrong mode " + mode + " passed to glMatrixMode";
-      }
-    }
-
   function _glOrtho(left, right, bottom, top_, nearVal, farVal) {
       GLImmediate.matricesModified = true;
       GLImmediate.matrixVersion[GLImmediate.currentMatrix] = (GLImmediate.matrixVersion[GLImmediate.currentMatrix] + 1)|0;
       GLImmediate.matrixLib.mat4.multiply(GLImmediate.matrix[GLImmediate.currentMatrix],
           GLImmediate.matrixLib.mat4.ortho(left, right, bottom, top_, nearVal, farVal));
-    }
-
-  function _glRotatef(angle, x, y, z) {
-      GLImmediate.matricesModified = true;
-      GLImmediate.matrixVersion[GLImmediate.currentMatrix] = (GLImmediate.matrixVersion[GLImmediate.currentMatrix] + 1)|0;
-      GLImmediate.matrixLib.mat4.rotate(GLImmediate.matrix[GLImmediate.currentMatrix], angle*Math.PI/180, [x, y, z]);
-    }
-
-  function _glTranslatef(x, y, z) {
-      GLImmediate.matricesModified = true;
-      GLImmediate.matrixVersion[GLImmediate.currentMatrix] = (GLImmediate.matrixVersion[GLImmediate.currentMatrix] + 1)|0;
-      GLImmediate.matrixLib.mat4.translate(GLImmediate.matrix[GLImmediate.currentMatrix], [x, y, z]);
     }
 
   function _glVertex2f(x, y) {
@@ -7467,14 +7399,6 @@ function dbg(text) {
     }
 
   function _glViewport(x0, x1, x2, x3) { GLctx['viewport'](x0, x1, x2, x3) }
-
-  function _gluPerspective(fov, aspect, near, far) {
-      GLImmediate.matricesModified = true;
-      GLImmediate.matrixVersion[GLImmediate.currentMatrix] = (GLImmediate.matrixVersion[GLImmediate.currentMatrix] + 1)|0;
-      GLImmediate.matrix[GLImmediate.currentMatrix] =
-        GLImmediate.matrixLib.mat4.perspective(fov, aspect, near, far,
-                                                 GLImmediate.matrix[GLImmediate.currentMatrix]);
-    }
 
   
   
@@ -7909,18 +7833,11 @@ var wasmImports = {
   "glClear": _glClear,
   "glClearColor": _glClearColor,
   "glColor3f": _glColor3f,
-  "glEnable": _glEnable,
   "glEnd": _glEnd,
   "glFlush": _glFlush,
-  "glLightfv": _glLightfv,
-  "glLoadIdentity": _glLoadIdentity,
-  "glMatrixMode": _glMatrixMode,
   "glOrtho": _glOrtho,
-  "glRotatef": _glRotatef,
-  "glTranslatef": _glTranslatef,
   "glVertex2f": _glVertex2f,
   "glViewport": _glViewport,
-  "gluPerspective": _gluPerspective,
   "glutCreateWindow": _glutCreateWindow,
   "glutDisplayFunc": _glutDisplayFunc,
   "glutIdleFunc": _glutIdleFunc,
