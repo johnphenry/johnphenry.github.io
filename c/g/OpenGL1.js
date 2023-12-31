@@ -10790,6 +10790,10 @@ function dbg(text) {
         GLImmediate.clientColor[3] = a;
       }
     }
+  function _glColor3f(r, g, b) {
+      _emscripten_glColor4f(r, g, b, 1);
+    }
+
   function _emscripten_glColor4ub(r, g, b, a) {
       _emscripten_glColor4f((r&255)/255, (g&255)/255, (b&255)/255, (a&255)/255);
     }
@@ -10839,6 +10843,13 @@ function dbg(text) {
       }
     }
 
+  function _glOrtho(left, right, bottom, top_, nearVal, farVal) {
+      GLImmediate.matricesModified = true;
+      GLImmediate.matrixVersion[GLImmediate.currentMatrix] = (GLImmediate.matrixVersion[GLImmediate.currentMatrix] + 1)|0;
+      GLImmediate.matrixLib.mat4.multiply(GLImmediate.matrix[GLImmediate.currentMatrix],
+          GLImmediate.matrixLib.mat4.ortho(left, right, bottom, top_, nearVal, farVal));
+    }
+
   function _glRotatef(angle, x, y, z) {
       GLImmediate.matricesModified = true;
       GLImmediate.matrixVersion[GLImmediate.currentMatrix] = (GLImmediate.matrixVersion[GLImmediate.currentMatrix] + 1)|0;
@@ -10851,6 +10862,16 @@ function dbg(text) {
       GLImmediate.matricesModified = true;
       GLImmediate.matrixVersion[GLImmediate.currentMatrix] = (GLImmediate.matrixVersion[GLImmediate.currentMatrix] + 1)|0;
       GLImmediate.matrixLib.mat4.translate(GLImmediate.matrix[GLImmediate.currentMatrix], [x, y, z]);
+    }
+
+  function _glVertex2f(x, y) {
+      assert(GLImmediate.mode >= 0); // must be in begin/end
+      GLImmediate.vertexData[GLImmediate.vertexCounter++] = x;
+      GLImmediate.vertexData[GLImmediate.vertexCounter++] = y;
+      GLImmediate.vertexData[GLImmediate.vertexCounter++] = 0;
+      GLImmediate.vertexData[GLImmediate.vertexCounter++] = 1;
+      assert(GLImmediate.vertexCounter << 2 < GL.MAX_TEMP_BUFFER_SIZE);
+      GLImmediate.addRendererComponent(GLImmediate.VERTEX, 4, GLctx.FLOAT);
     }
 
   function _emscripten_glVertex3f(x, y, z) {
@@ -11091,6 +11112,7 @@ var wasmImports = {
   "glBegin": _glBegin,
   "glClear": _glClear,
   "glClearColor": _glClearColor,
+  "glColor3f": _glColor3f,
   "glColor4ubv": _glColor4ubv,
   "glCullFace": _glCullFace,
   "glEnable": _glEnable,
@@ -11098,9 +11120,11 @@ var wasmImports = {
   "glFrontFace": _glFrontFace,
   "glLoadIdentity": _glLoadIdentity,
   "glMatrixMode": _glMatrixMode,
+  "glOrtho": _glOrtho,
   "glRotatef": _glRotatef,
   "glShadeModel": _glShadeModel,
   "glTranslatef": _glTranslatef,
+  "glVertex2f": _glVertex2f,
   "glVertex3fv": _glVertex3fv,
   "glViewport": _glViewport,
   "gluPerspective": _gluPerspective
