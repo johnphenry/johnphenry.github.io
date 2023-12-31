@@ -7793,7 +7793,6 @@ function dbg(text) {
       throw 'unwind';
     }
 
-
   function _glutReshapeFunc(func) {
       GLUT.reshapeFunc = func;
     }
@@ -7845,7 +7844,6 @@ var wasmImports = {
   "glutInitDisplayMode": _glutInitDisplayMode,
   "glutInitWindowSize": _glutInitWindowSize,
   "glutMainLoop": _glutMainLoop,
-  "glutPostRedisplay": _glutPostRedisplay,
   "glutReshapeFunc": _glutReshapeFunc,
   "glutSwapBuffers": _glutSwapBuffers
 };
